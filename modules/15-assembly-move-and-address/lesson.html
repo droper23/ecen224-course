@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>15 — Move &amp; Address | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="15-assembly-move-and-address">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 15 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit4">Unit 4 &middot; x86-64 Assembly</span>
+    <span class="badge unit4" style="opacity:0.7">Exam: Game 2</span>
+  </div>
+  <h1>Move &amp; Address (movq, leaq)</h1>
+  <p class="subtitle">
+    Every C statement you've written eventually becomes a sequence of moves between registers
+    and memory, plus address arithmetic to figure out <i>where</i> memory. This module covers
+    the <code>mov</code> instruction family, the full x86-64 addressing-mode syntax, and the
+    oddball instruction that never touches memory at all: <code>leaq</code>.
+  </p>
+  <div class="exam-note">
+    <b>CS:APP reference:</b> Chapter 3.4&ndash;3.5. &nbsp;|&nbsp;
+    <b>First lecture after Game 1.</b> &nbsp;|&nbsp;
+    <b>Tested on:</b> Game 2 and the Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Choose the correct <code>mov</code> suffix (<code>b</code>/<code>w</code>/<code>l</code>/<code>q</code>) for a given operand size, and use <code>movz</code>/<code>movs</code> to widen a value correctly</li>
+  <li>Identify the three AT&amp;T-syntax operand types &mdash; immediate, register, memory &mdash; in a real instruction</li>
+  <li>Parse the general addressing-mode syntax <code>D(base,index,scale)</code> and compute the effective address by hand</li>
+  <li>Explain what <code>leaq</code> actually does, and why it's different from every other instruction that mentions memory</li>
+  <li>Recognize why compilers emit <code>leaq</code> for pointer arithmetic and for cheap multiplications like <code>x*12</code></li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. AT&amp;T syntax and the register file, briefly</h2>
+<p>
+  This course uses <b>AT&amp;T syntax</b> (the GCC/CS:APP default), not Intel syntax. Two rules
+  fall out of that immediately: registers are prefixed with <code>%</code>, immediate constants
+  are prefixed with <code>$</code>, and every two-operand instruction reads
+  <b>source, destination</b> &mdash; the opposite order from how you'd read it in Intel syntax
+  or in a C assignment. <code>movq %rax, %rbx</code> means "copy <code>%rax</code> into
+  <code>%rbx</code>," not the reverse.
+</p>
+<p>
+  x86-64 gives you sixteen 64-bit general-purpose registers (<code>%rax</code>&ndash;<code>%rdx</code>,
+  <code>%rsi</code>, <code>%rdi</code>, <code>%rbp</code>, <code>%rsp</code>, <code>%r8</code>&ndash;<code>%r15</code>).
+  Each one also has smaller aliases for its low-order bytes, which is how the <code>mov</code>
+  suffix and the register name have to agree:
+</p>
+<table>
+  <tr><th>Width</th><th>Bytes</th><th>Example (the <code>%rax</code> family)</th></tr>
+  <tr><td>Quad word</td><td>8</td><td><code>%rax</code></td></tr>
+  <tr><td>Double word</td><td>4</td><td><code>%eax</code></td></tr>
+  <tr><td>Word</td><td>2</td><td><code>%ax</code></td></tr>
+  <tr><td>Byte</td><td>1</td><td><code>%al</code></td></tr>
+</table>
+<p>
+  <code>%rsi</code>/<code>%rdi</code> and the numbered registers <code>%r8</code>&ndash;<code>%r15</code>
+  follow the same pattern with a <code>d</code>/<code>w</code>/<code>b</code> or numeric suffix
+  (e.g. <code>%esi</code>, <code>%r8d</code>, <code>%r8b</code>).
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. Operand types: immediate, register, memory</h2>
+<p>
+  Every operand in x86-64 assembly is one of exactly three kinds:
+</p>
+<ul>
+  <li><b>Immediate</b> &mdash; a constant, written with a <code>$</code> prefix:
+  <code>$0x400</code>, <code>$-533</code>. Encoded directly into the instruction bytes.</li>
+  <li><b>Register</b> &mdash; one of the sixteen integer registers: <code>%rax</code>,
+  <code>%r13</code>. (<code>%rsp</code> is reserved for the stack pointer and shouldn't be
+  used as a general-purpose scratch register.)</li>
+  <li><b>Memory</b> &mdash; a reference to 1/2/4/8 consecutive bytes at a computed address,
+  written in parentheses: <code>(%rax)</code> is the simplest case, meaning "the memory at
+  the address stored in <code>%rax</code>" &mdash; exactly what pointer dereferencing
+  (<code>*p</code>) compiles to.</li>
+</ul>
+<p>
+  The general move instruction is <code>movq Src, Dest</code>. Critically, <b>you cannot move
+  memory directly to memory</b> &mdash; at least one operand must be a register. Moving a value
+  from one address to another always takes two instructions, staged through a register:
+</p>
+<pre><code class="language-x86asm">movq (%rax), %rdx     # load: temp = *p1   (illegal to fold into one instr)
+movq %rdx, (%rcx)      # store: *p2 = temp</code></pre>
+<table>
+  <tr><th>Instruction</th><th>C analog</th></tr>
+  <tr><td><code>movq $0x4, %rax</code></td><td><code>temp = 0x4;</code></td></tr>
+  <tr><td><code>movq $-147, (%rax)</code></td><td><code>*p = -147;</code></td></tr>
+  <tr><td><code>movq %rax, %rdx</code></td><td><code>temp2 = temp1;</code></td></tr>
+  <tr><td><code>movq %rax, (%rdx)</code></td><td><code>*p = temp;</code></td></tr>
+  <tr><td><code>movq (%rax), %rdx</code></td><td><code>temp = *p;</code></td></tr>
+</table>
+<p>
+  A classic worked example is pointer <code>swap</code>, which uses only loads, a register
+  move, and stores:
+</p>
+<pre><code class="language-c">void swap(long *xp, long *yp) {
+  long t0 = *xp;
+  long t1 = *yp;
+  *xp = t1;
+  *yp = t0;
+}</code></pre>
+<pre><code class="language-x86asm">swap:
+  movq    (%rdi), %rax   # t0 = *xp
+  movq    (%rsi), %rdx   # t1 = *yp
+  movq    %rdx, (%rdi)   # *xp = t1
+  movq    %rax, (%rsi)   # *yp = t0
+  ret</code></pre>
+<p>
+  Notice the arguments <code>xp</code> and <code>yp</code> arrive in <code>%rdi</code> and
+  <code>%rsi</code> &mdash; that's the x86-64 calling convention, covered in a later module.
+  For now, just read each line: dereference <code>%rdi</code> into <code>%rax</code>,
+  dereference <code>%rsi</code> into <code>%rdx</code>, then store each temporary back through
+  the other pointer.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">In the instruction <code>movq $-147, (%rax)</code>, what are the two operand types (source, destination)?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">Register, memory</button>
+    <button class="quiz-opt" data-correct="true">Immediate, memory</button>
+    <button class="quiz-opt" data-correct="false">Immediate, register</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>The <code>$</code> prefix on <code>-147</code> marks it as an immediate constant. <code>(%rax)</code> is a memory reference &mdash; the address stored in <code>%rax</code>, dereferenced. So this stores the constant -147 into the memory location that %rax points to.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>3. The mov family: matching suffix to size</h2>
+<p>
+  There is no single "move" instruction &mdash; there's a family, and the suffix tells the CPU
+  (and you, reading the assembly) how many bytes to move. The destination register must match
+  that width exactly:
+</p>
+<table>
+  <tr><th>Suffix</th><th>Size</th><th>Name</th></tr>
+  <tr><td><code>b</code></td><td>1 byte</td><td>byte</td></tr>
+  <tr><td><code>w</code></td><td>2 bytes</td><td>word</td></tr>
+  <tr><td><code>l</code></td><td>4 bytes</td><td>double word (long, in x86 terms)</td></tr>
+  <tr><td><code>q</code></td><td>8 bytes</td><td>quad word</td></tr>
+</table>
+<pre><code class="language-x86asm">movl %eax, (%rsp)            # move 4 bytes
+movw (%rax), %dx              # move 2 bytes
+movb $0xFF, %bl                # move 1 byte
+movb (%rsp,%rdx,4), %dl       # move one byte from (%rsp+%rdx*4) to %dl
+movq (%rdx), %rax             # move 8 bytes</code></pre>
+<p>
+  Moving a <i>smaller</i> value into a <i>larger</i> register needs to decide what goes in the
+  extra bytes, so two more instruction families handle that explicitly:
+</p>
+<ul>
+  <li><code>movz</code>b/w(w,l,q) &mdash; <b>zero-extend</b>: pad the upper bits with 0s.
+  <code>movzbq $0x8A, %rax</code> produces <code>0x000000000000008A</code>.</li>
+  <li><code>movs</code>b/w(w,l,q) &mdash; <b>sign-extend</b>: replicate the sign bit into the
+  upper bits, preserving the value as a signed number. <code>movsbq $0x8A, %rax</code>
+  produces <code>0xFFFFFFFFFFFFFF8A</code> (since <code>0x8A</code> is negative as a signed
+  byte).</li>
+</ul>
+<p>
+  A quirk worth remembering: a plain <code>movl</code> into a 32-bit register (e.g.
+  <code>%eax</code>) automatically zeroes the upper 32 bits of the full 64-bit register as a
+  side effect &mdash; but a <code>movw</code> or <code>movb</code> leaves the untouched upper
+  bytes exactly as they were. <code>movw $-1, %ax</code> sets <code>%ax</code> to
+  <code>0xFFFF</code> but leaves the high 48 bits of <code>%rax</code> alone.
+</p>
+<div class="callout warn">
+  <b>Instructions that don't exist &mdash; common exam bait:</b>
+  <ul style="margin-top:0.4rem">
+    <li><code>movl %eax, (%rsp)</code> is fine, but <code>movl %rax, (%rsp)</code> is not &mdash; the suffix (<code>l</code>, 4 bytes) must match the register width (<code>%rax</code> is 8 bytes).</li>
+    <li><code>movb $0xF, (%ebx)</code> is illegal &mdash; a 32-bit register can't be used as a 64-bit address in x86-64; addressing registers must be full 64-bit.</li>
+    <li><code>movw (%rax), 4(%rsp)</code> is illegal &mdash; both operands are memory references, and at most one operand may be memory.</li>
+    <li><code>movl %eax, $0x123</code> is illegal &mdash; an immediate can never be a destination.</li>
+  </ul>
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text">You need to load a signed 16-bit value from memory into %rax, preserving its sign as a 64-bit signed value. Which instruction does that?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false"><code>movw (%rbx), %rax</code></button>
+    <button class="quiz-opt" data-correct="false"><code>movzwq (%rbx), %rax</code></button>
+    <button class="quiz-opt" data-correct="true"><code>movswq (%rbx), %rax</code></button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>movw is a suffix/register-size mismatch (w is 2 bytes, %rax is 8). movzwq would zero-extend, which is wrong for a signed value — a negative 16-bit number would turn into a huge positive 64-bit number. movswq sign-extends the word into the quad word, which is exactly what preserving a signed value requires.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>4. Full addressing-mode syntax</h2>
+<p>
+  <code>(%rax)</code> was the simplest possible memory operand. The general form lets you
+  express almost any array or struct access in a single operand:
+</p>
+<pre><code class="language-x86asm">D(base, index, scale)      Mem[ D + Reg[base] + scale * Reg[index] ]</code></pre>
+<ul>
+  <li><b>D</b> &mdash; a constant displacement (encoded in 1, 2, or 4 bytes)</li>
+  <li><b>base</b> &mdash; any of the 16 integer registers</li>
+  <li><b>index</b> &mdash; any register except <code>%rsp</code></li>
+  <li><b>scale</b> &mdash; must be 1, 2, 4, or 8 (matching the size in bytes of <code>char</code>,
+  <code>short</code>, <code>int</code>/<code>float</code>, and <code>long</code>/<code>double</code>/pointer respectively &mdash; that's not a coincidence, it's what makes array indexing free)</li>
+</ul>
+<p>Every piece is optional, which gives several common special-case forms:</p>
+<table>
+  <tr><th>Form</th><th>Computes</th></tr>
+  <tr><td><code>(b)</code></td><td><code>Mem[Reg[b]]</code></td></tr>
+  <tr><td><code>D(b)</code></td><td><code>Mem[D + Reg[b]]</code></td></tr>
+  <tr><td><code>(b,i)</code></td><td><code>Mem[Reg[b] + Reg[i]]</code></td></tr>
+  <tr><td><code>D(b,i)</code></td><td><code>Mem[D + Reg[b] + Reg[i]]</code></td></tr>
+  <tr><td><code>(b,i,S)</code></td><td><code>Mem[Reg[b] + S*Reg[i]]</code></td></tr>
+  <tr><td><code>D(,i,S)</code></td><td><code>Mem[D + S*Reg[i]]</code></td></tr>
+  <tr><td><code>D(b,i,S)</code></td><td><code>Mem[D + Reg[b] + S*Reg[i]]</code></td></tr>
+</table>
+<p>
+  Given <code>%rdx = 0xf000</code> and <code>%rcx = 0x100</code>, here's how the arithmetic
+  plays out:
+</p>
+<table>
+  <tr><th>Expression</th><th>D + Reg[b] + S&middot;Reg[i]</th><th>Address</th></tr>
+  <tr><td><code>0x8(%rdx)</code></td><td>0x8 + 0xf000</td><td><code>0xf008</code></td></tr>
+  <tr><td><code>(%rdx,%rcx)</code></td><td>0xf000 + 0x100</td><td><code>0xf100</code></td></tr>
+  <tr><td><code>(%rdx,%rcx,4)</code></td><td>0xf000 + 4&middot;0x100</td><td><code>0xf400</code></td></tr>
+  <tr><td><code>0x80(,%rcx,2)</code></td><td>0x80 + 2&middot;0x100</td><td><code>0x280</code></td></tr>
+</table>
+
+<div class="quiz">
+  <div class="quiz-q-text">Given %rax = 0x2000 and %rdx = 0x3, what address does <code>0x4(%rax,%rdx,8)</code> compute?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">0x2007</button>
+    <button class="quiz-opt" data-correct="false">0x2028</button>
+    <button class="quiz-opt" data-correct="true">0x201c</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>D + Reg[base] + scale&middot;Reg[index] = 0x4 + 0x2000 + 8&middot;0x3. In decimal, 8&times;3 = 24 = 0x18, so the sum is 0x2000 + 0x18 + 0x4 = 0x201c. Convert the scale multiplication to decimal first, then back to hex, to avoid the common slip of multiplying hex digits directly.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>5. leaq: computing an address without touching memory</h2>
+<p>
+  <code>leaq Src, Dest</code> stands for <b>load effective address</b>. Syntactically its
+  source operand looks exactly like a memory operand &mdash; it uses the same
+  <code>D(base,index,scale)</code> syntax &mdash; but semantically it is completely different
+  from every other instruction that uses that syntax: <b><code>leaq</code> never reads memory
+  at all.</b> It just evaluates the address arithmetic and writes the resulting number into the
+  destination register. Compare:
+</p>
+<pre><code class="language-x86asm">movq (%rax), %rdx    # dereference: %rdx = *(long*)%rax
+leaq (%rax), %rdx     # copy the address itself: %rdx = %rax</code></pre>
+<p>Compilers reach for <code>leaq</code> in two situations:</p>
+<ul>
+  <li><b>Generating a pointer</b>, e.g. compiling <code>p = &amp;x[i];</code>. Because
+  <code>leaq</code> computes an address but doesn't dereference it, it's the natural
+  translation of the <code>&amp;</code> operator combined with array/struct offset math.</li>
+  <li><b>Cheap integer arithmetic of the form <code>x + k*y</code></b>, where
+  <code>k</code> is 1, 2, 4, or 8. Since the CPU's address-computation hardware already
+  computes exactly that expression, the compiler can hijack <code>leaq</code> as a fast
+  add-and-multiply that has nothing to do with memory at all.</li>
+</ul>
+<p>
+  The canonical exam example is compiling multiplication by a constant. GCC turns
+  <code>x*12</code> into a shift and an add-via-<code>leaq</code>, because <code>leaq</code>
+  and a shift are both cheaper than a general multiply:
+</p>
+<pre><code class="language-c">long m12(long x) {
+  return x * 12;
+}</code></pre>
+<pre><code class="language-x86asm">                                 # x*12  ==  (x + 2x) * 4
+leaq (%rdi,%rdi,2), %rax   # t = x + x*2 = 3x
+salq $2, %rax                # return t << 2 = 3x*4 = 12x</code></pre>
+<p>
+  <code>leaq</code> also shows up wherever a struct field's memory address (not its value)
+  is needed &mdash; that's the subject of the Structs &amp; Unions module.
+</p>
+<div class="callout">
+  <b>Watch for on exams:</b> because <code>leaq</code> performs no actual memory access and no
+  arithmetic operation in the ALU sense, it does <b>not</b> set any condition codes (ZF, SF,
+  CF, OF) &mdash; unlike <code>addq</code>, <code>subq</code>, and friends, which you'll meet
+  in the next module.
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why does GCC translate <code>x*12</code> using <code>leaq</code> and <code>salq</code> instead of a single <code>imulq</code>?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false"><code>imulq</code> doesn't exist in x86-64</button>
+    <button class="quiz-opt" data-correct="true">leaq's address-computation hardware and a shift are both cheaper than a general multiply, and 12 factors nicely into (1+2)&times;4</button>
+    <button class="quiz-opt" data-correct="false">leaq is required whenever an immediate constant is involved</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>General multiplication is one of the more expensive ALU operations. Because 12 = (1+2)*4, the compiler can compute 3x with one leaq (an address-computation instruction, not a "real" multiply) and then finish with a cheap left-shift by 2 — avoiding imulq entirely for a constant that factors into small scale/shift-friendly pieces.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../14-assembly-introduction/lesson.html">&larr; 14. Assembly Introduction</a>
+  <a class="next" href="../16-assembly-arith-jump-cond/lesson.html">16. Arithmetic, Jumps &amp; Conditionals &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

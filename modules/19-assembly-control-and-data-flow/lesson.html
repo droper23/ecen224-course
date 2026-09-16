@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>19 — Control &amp; Data Flow | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="19-assembly-control-and-data-flow">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 19 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit4">Unit 4 &middot; x86-64 Assembly</span>
+    <span class="badge unit4" style="opacity:0.7">Exam: Game 2</span>
+  </div>
+  <h1>Control &amp; Data Flow</h1>
+  <p class="subtitle">
+    A function call is really three separate jobs happening at once: control has to jump to
+    the callee and find its way back, arguments and a return value have to move somewhere both
+    caller and callee agree on, and memory has to be carved out for the call and reclaimed
+    afterward. In C this is invisible. In assembly, all three mechanisms are right there on the
+    page &mdash; the stack, a handful of argument registers, and two instructions:
+    <code>call</code> and <code>ret</code>.
+  </p>
+  <div class="exam-note">
+    <b>CS:APP reference:</b> Chapter 3.7. &nbsp;|&nbsp;
+    <b>Tested on:</b> Game 2 and the Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Explain the three responsibilities every procedure call must handle: passing control, passing data, and managing memory</li>
+  <li>Trace exactly what <code>call</code> and <code>ret</code> do to <code>%rip</code> and the stack</li>
+  <li>Name which registers carry the first six integer/pointer arguments, and where argument 7 and beyond go</li>
+  <li>Distinguish caller-saved from callee-saved registers, and explain why the convention exists</li>
+  <li>Draw the layout of a stack frame during a function call</li>
+  <li>Explain how recursion falls out of the call/return/stack discipline with no special-casing</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. Three jobs, one mechanism</h2>
+<p>
+  Consider a caller <code>P</code> that calls <code>Q(x)</code>, which in turn indexes into a
+  local array before returning:
+</p>
+<pre><code class="language-c">P(...) {
+  ...
+  y = Q(x);
+  print(y);
+  ...
+}
+
+int Q(int i) {
+  int t = 3 * i;
+  int v[10];
+  ...
+  return v[t];
+}</code></pre>
+<p>
+  For that one call to work, three things have to happen, and every one of them is visible in
+  the generated assembly:
+</p>
+<ul>
+  <li><b>Passing control</b> &mdash; execution has to jump to the first instruction of
+  <code>Q</code>, and when <code>Q</code> finishes it has to jump back to exactly the
+  instruction in <code>P</code> right after the call.</li>
+  <li><b>Passing data</b> &mdash; <code>P</code> has to hand <code>x</code> to <code>Q</code>,
+  and <code>Q</code> has to hand its result back.</li>
+  <li><b>Memory management</b> &mdash; <code>Q</code> needs space for its own local variables
+  (like <code>v</code> and <code>t</code>) that appears when <code>Q</code> is entered and
+  disappears when it returns.</li>
+</ul>
+<p>
+  x86-64 code only pays for a mechanism when it actually needs it &mdash; a leaf function with
+  no locals and few arguments might use almost none of this machinery. But when it's needed,
+  it's always built out of the same two ingredients: the <b>stack</b> and a fixed set of
+  <b>argument registers</b>.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. The stack: %rsp and push/pop</h2>
+<p>
+  The stack is just a region of memory managed with stack discipline &mdash; last in, first
+  out. Register <code>%rsp</code> always holds the address of the current stack "top." Unlike
+  the number line in your head, the x86-64 stack <b>grows toward lower addresses</b>: pushing
+  something onto the stack <i>decreases</i> <code>%rsp</code>.
+</p>
+<pre><code class="language-plaintext">pushq Src
+  1. Decrement %rsp by 8
+  2. Write the operand at the address now in %rsp
+
+popq Dest
+  1. Read the operand at the address in %rsp
+  2. Increment %rsp by 8
+  3. Store the value into Dest (must be a register)</code></pre>
+<p>
+  Every <code>pushq</code>/<code>popq</code> moves exactly 8 bytes (a quadword) on x86-64,
+  which is why you'll see the stack pointer move in multiples of 8 (or 16, to keep it aligned)
+  throughout this unit.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>3. call and ret: passing control</h2>
+<p>Take a minimal example: <code>multstore</code> calls <code>mult2</code>.</p>
+<pre><code class="language-c">long mult2(long a, long b) {
+   long s = a * b;
+   return s;
+}
+
+void multstore(long x, long y, long *dest) {
+   long t = mult2(x, y);
+   *dest = t;
+}</code></pre>
+<pre><code class="language-x86asm">0000000000400550 &lt;mult2&gt;:
+400550:  mov    %rdi,%rax   # a
+400553:  imul   %rsi,%rax   # a * b
+400557:  retq               # return
+
+0000000000400540 &lt;multstore&gt;:
+400540:  push   %rbx        # save %rbx
+400541:  mov    %rdx,%rbx   # save dest
+400544:  callq  400550 &lt;mult2&gt;   # mult2(x,y)
+400549:  mov    %rax,(%rbx) # *dest = t
+40054c:  pop    %rbx        # restore %rbx
+40054d:  retq               # return</code></pre>
+<p>
+  <code>call label</code> does two things: it pushes the address of the instruction
+  <i>immediately after</i> the <code>call</code> onto the stack (the return address), then
+  jumps <code>%rip</code> to <code>label</code>. <code>ret</code> reverses it: pop that saved
+  address off the stack and jump <code>%rip</code> there.
+</p>
+<p>Walking the example above at <code>400544: callq 400550 &lt;mult2&gt;</code>:</p>
+<ul>
+  <li>Before the call, <code>%rip</code> points at the <code>callq</code> instruction itself.</li>
+  <li>Executing it pushes <code>0x400549</code> (the address of the <code>mov</code> right after
+  the call) onto the stack and sets <code>%rip = 0x400550</code>, the start of <code>mult2</code>.</li>
+  <li><code>mult2</code> runs its two instructions with no idea who called it or why &mdash; it
+  only knows its arguments arrived in registers.</li>
+  <li>When <code>mult2</code> hits <code>retq</code>, it pops <code>0x400549</code> back off the
+  stack into <code>%rip</code>, and execution resumes right where <code>multstore</code> left
+  off.</li>
+</ul>
+<p>
+  Notice that <code>call</code>/<code>ret</code> never touch any general-purpose register to
+  remember the return address &mdash; it's parked on the stack, which is exactly what lets
+  nested and recursive calls stack up correctly (more on that in Section 6).
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">Right after <code>callq 400550 &lt;mult2&gt;</code> executes at address <code>400544</code>, and the next instruction in <code>multstore</code> is at <code>400549</code>, what has changed?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false"><code>%rsp</code> increased by 8, and <code>%rip</code> now holds <code>400549</code></button>
+    <button class="quiz-opt" data-correct="true"><code>%rsp</code> decreased by 8, <code>0x400549</code> was written at the new <code>%rsp</code>, and <code>%rip</code> now holds <code>400550</code></button>
+    <button class="quiz-opt" data-correct="false">Nothing on the stack changes; only <code>%rip</code> jumps to <code>400550</code></button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span><code>call</code> always pushes the return address (the instruction right after itself) before jumping, so the stack shrinks by 8 bytes and <code>%rip</code> lands at the callee's first instruction &mdash; here, <code>mult2</code> at <code>400550</code>.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>4. Passing data: registers first, stack for the rest</h2>
+<p>
+  x86-64 passes the first six integer/pointer arguments in fixed registers, in this order:
+</p>
+<table>
+  <tr><th>Argument</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th></tr>
+  <tr><td>Register</td><td><code>%rdi</code></td><td><code>%rsi</code></td><td><code>%rdx</code></td><td><code>%rcx</code></td><td><code>%r8</code></td><td><code>%r9</code></td></tr>
+</table>
+<p>
+  Argument 7 and beyond go on the stack, in the caller's "argument build" area, in order. The
+  return value comes back in <code>%rax</code>. In <code>mult2</code> above, <code>a</code>
+  arrives in <code>%rdi</code> and <code>b</code> in <code>%rsi</code> because
+  <code>multstore</code> already had <code>x</code> and <code>y</code> sitting in those exact
+  registers &mdash; no data even had to move before the call.
+</p>
+<p>
+  This register convention is why so much x86-64 code you'll read in this course never touches
+  the stack at all for a simple, few-argument function: the registers <i>are</i> the calling
+  convention, and the stack is only recruited when there's more data than registers, or space
+  needed than registers can hold.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>5. Stack frames</h2>
+<p>
+  A stack frame is the region of stack memory that belongs to one in-progress function call.
+  Reading from the top of the frame down to the bottom, a frame can contain:
+</p>
+<ul>
+  <li>An <b>argument-build area</b>, for arguments 7+ to whatever function <i>this</i> function
+  is about to call</li>
+  <li><b>Local variables</b>, for anything the compiler couldn't fit in registers</li>
+  <li><b>Saved register values</b>, for any callee-saved registers this function needs to reuse</li>
+  <li>Optionally, the caller's <b>old <code>%rbp</code></b>, if the frame pointer convention is used</li>
+  <li>The <b>return address</b>, pushed by <code>call</code> &mdash; technically the bottom of
+  <i>this</i> frame, shared with the previous one</li>
+</ul>
+<p>
+  <code>%rsp</code> always marks the current top of stack; some code also keeps
+  <code>%rbp</code> pointing at a fixed spot within the current frame (the "frame pointer") so
+  local variables can be addressed with a constant offset even as <code>%rsp</code> moves
+  around during the function body. Not all compiled code bothers with a frame pointer &mdash;
+  when it's omitted, everything is addressed relative to <code>%rsp</code> instead.
+</p>
+<p>Frame space is allocated when a procedure is entered and freed when it returns:</p>
+<pre><code class="language-x86asm">call_incr:
+  subq    $16, %rsp        # allocate 16 bytes of frame
+  movq    $15213, 8(%rsp)  # local variable v1
+  movl    $3000, %esi      # 2nd arg to incr
+  leaq    8(%rsp), %rdi    # 1st arg to incr: &amp;v1
+  call    incr
+  addq    8(%rsp), %rax    # v1 + incr's return value
+  addq    $16, %rsp        # deallocate the frame
+  ret</code></pre>
+<p>
+  <code>leaq</code> here is doing address arithmetic, not a memory access &mdash; it computes
+  <code>%rsp + 8</code> and loads that <i>address</i> into <code>%rdi</code>, which is exactly
+  how C's <code>&amp;v1</code> gets compiled.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>6. Caller-saved vs. callee-saved registers</h2>
+<p>
+  Registers are a shared, limited resource: both a caller and a callee might want to use the
+  same one for their own purposes across a call. x86-64 resolves this with a convention that
+  splits the general-purpose registers into two camps:
+</p>
+<table>
+  <tr><th>Class</th><th>Registers</th><th>Rule</th></tr>
+  <tr><td>Caller-saved</td><td><code>%rax %rdi %rsi %rdx %rcx %r8 %r9 %r10 %r11</code></td><td>A callee is free to overwrite these. If the <i>caller</i> needs a value in one of them to survive the call, the caller must save it first.</td></tr>
+  <tr><td>Callee-saved</td><td><code>%rbx %rbp %r12 %r13 %r14 %r15</code></td><td>A <i>callee</i> that wants to use one of these must save its incoming value and restore it before returning. The caller can trust these survive a call untouched.</td></tr>
+</table>
+<p>
+  <code>%rax</code> is also special as the return-value register &mdash; caller-saved, since the
+  callee is expected to overwrite it on purpose. Back in the <code>multstore</code> example, the
+  <code>push %rbx</code> / <code>pop %rbx</code> pair exists purely to honor this rule:
+  <code>multstore</code> wants to keep <code>dest</code> in the callee-saved
+  <code>%rbx</code> across the call to <code>mult2</code>, so it saves <code>%rbx</code>'s old
+  value on entry and restores it before returning, protecting whoever called
+  <code>multstore</code>.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">A function wants to keep a value alive in a register across a call to another function, without saving it itself. Which kind of register should it use?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">A caller-saved register, like <code>%rax</code> or <code>%r10</code></button>
+    <button class="quiz-opt" data-correct="true">A callee-saved register, like <code>%rbx</code> or <code>%r12</code></button>
+    <button class="quiz-opt" data-correct="false">It doesn't matter &mdash; all registers survive function calls</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Callee-saved registers are the callee's responsibility to preserve, so the caller can rely on their values surviving a call for free. A caller-saved register might be clobbered by the callee, so the caller would have to save and restore it itself &mdash; defeating the point.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>7. Recursion: nothing special</h2>
+<p>
+  Recursion often feels mysterious in a high-level language, but at the assembly level it's not
+  a separate feature at all &mdash; it's the exact same <code>call</code>/stack-frame mechanism,
+  just aimed at the same function. Each active call gets its own private frame, so each
+  recursive invocation's locals and saved registers can't collide with any other invocation's.
+</p>
+<pre><code class="language-c">/* Recursive popcount: count 1-bits in x */
+long pcount_r(unsigned long x) {
+  if (x == 0)
+    return 0;
+  else
+    return (x &amp; 1) + pcount_r(x &gt;&gt; 1);
+}</code></pre>
+<pre><code class="language-x86asm">pcount_r:
+  movl    $0, %eax        # return value = 0
+  testq   %rdi, %rdi       # x == 0?
+  je      .L6              # if so, done
+  pushq   %rbx             # save caller's %rbx (callee-saved)
+  movq    %rdi, %rbx
+  andl    $1, %ebx         # %rbx = x &amp; 1
+  shrq    %rdi             # %rdi = x &gt;&gt; 1
+  call    pcount_r         # recursive call
+  addq    %rbx, %rax       # result = (x&amp;1) + pcount_r(x&gt;&gt;1)
+  popq    %rbx             # restore this frame's %rbx
+.L6:
+  ret</code></pre>
+<p>
+  Each nested call to <code>pcount_r</code> pushes its own return address and its own saved copy
+  of <code>%rbx</code> before recursing further, so the value of <code>x &amp; 1</code> computed
+  at depth 3 can never be stomped on by the call at depth 4 &mdash; it's sitting in a different
+  stack slot. When the base case (<code>x == 0</code>) finally returns, the calls unwind in
+  exactly the reverse order they were made, each one popping its own saved <code>%rbx</code> and
+  adding its own bit back in. Because the stack is strictly last-in-first-out and every call is
+  matched with exactly one return, this works cleanly no matter how deep the recursion goes
+  (until the 8&nbsp;MB stack itself runs out) &mdash; and it even works for mutual recursion,
+  where <code>P</code> calls <code>Q</code> which calls <code>P</code> again.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why doesn't a deeply recursive function's local variables get overwritten by its own recursive calls?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">The compiler renames the variables at each depth so they never collide</button>
+    <button class="quiz-opt" data-correct="true">Each call gets its own stack frame, pushed fresh on entry and popped on return, so each depth's locals live at a different address</button>
+    <button class="quiz-opt" data-correct="false">Recursive functions are only allowed to use callee-saved registers</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>The stack discipline gives every call &mdash; recursive or not &mdash; a private frame for the duration of that call. There's no special-case machinery for recursion; it's the same call/frame/return mechanism used for any function call, just pointed at itself.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../18-assembly-structs-unions/lesson.html">&larr; 18. Structs &amp; Unions</a>
+  <a class="next" href="../20-assembly-memory/lesson.html">20. Memory Management &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

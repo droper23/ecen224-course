@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>14 — Assembly Introduction | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="14-assembly-introduction">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 14 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit3">Unit 3 &middot; Under the Hood</span>
+    <span class="badge unit3" style="opacity:0.7">Exam: Game 1</span>
+  </div>
+  <h1>Assembly Introduction</h1>
+  <p class="subtitle">
+    Everything above this layer &mdash; C, functions, structs, loops &mdash; is a story the
+    compiler tells to make programming tractable for humans. The CPU only ever sees the story
+    it produces: sequences of instructions operating on registers and memory. This module is
+    the bridge into that world &mdash; the x86-64 register set, AT&T syntax, and how to get from
+    a C program to the assembly and machine code the processor actually runs.
+  </p>
+  <div class="exam-note">
+    <b>CS:APP reference:</b> Chapter 3.2. &nbsp;|&nbsp;
+    <b>Last lecture topic before Game 1 opens (Oct 12).</b> &nbsp;|&nbsp;
+    <b>Tested on:</b> Game 1 and the Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Explain why programmers read assembly even when they don't write it by hand</li>
+  <li>Name the 16 x86-64 general-purpose registers and their four access widths</li>
+  <li>Explain the sub-register overlap between <code>%rax</code>/<code>%eax</code>/<code>%ax</code>/<code>%al</code>, including the 32-bit zero-extension rule</li>
+  <li>Recognize AT&T syntax: register, immediate, and operand-order conventions</li>
+  <li>Use <code>gcc -S</code> to see a C function's assembly, and read basic <code>objdump -d</code> output</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. Why read assembly at all</h2>
+<p>
+  You will very rarely hand-write x86-64 assembly in this course or afterward. You'll read it
+  constantly, for three reasons that come up throughout the rest of this unit:
+</p>
+<ul>
+  <li><b>Understanding what the compiler actually did.</b> Optimization, calling conventions, and
+  struct/array layout all become concrete once you can see the instructions a piece of C compiles
+  to &mdash; and that's the only way to answer "what does this C code actually cost."</li>
+  <li><b>Debugging at the machine level.</b> When a program crashes with no source-level
+  explanation, or when you're using gdb to inspect a crash inside a library you don't have source
+  for, assembly and register/memory state are all you have.</li>
+  <li><b>Security.</b> Buffer overflow attacks (later in this course) work by corrupting memory
+  in a way that redirects what instructions the CPU executes next. Understanding that requires
+  understanding what's actually on the stack and in registers at the machine level, not just
+  what the C source says should happen.</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>2. A few terms, precisely</h2>
+<p>These words get used loosely in casual conversation but mean specific, different things:</p>
+<ul>
+  <li><b>Instruction Set Architecture (ISA)</b> &mdash; everything you need to know to write
+  assembly for a processor: its registers, its word size, the format of its instructions, and the
+  effect each instruction has on machine state. x86-64 is an ISA; so is ARM.</li>
+  <li><b>Microarchitecture</b> &mdash; how a specific chip <i>implements</i> that ISA (pipeline
+  depth, cache sizes, clock frequency). Two very different chips can implement the same ISA and
+  run the exact same assembly.</li>
+  <li><b>Assembly code</b> &mdash; a human-readable text representation of machine instructions.</li>
+  <li><b>Machine code</b> &mdash; the actual bytes that encode those instructions. <b>Object
+  code</b> is machine code where addresses of global symbols aren't filled in yet (recall Module
+  13 &mdash; this is exactly what the linker resolves); <b>executable code</b> is the final,
+  fully-resolved form the processor runs.</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>3. Programmer-visible state</h2>
+<p>
+  From assembly's point of view, a CPU has exactly four things it can read or write:
+</p>
+<ul>
+  <li><b>Program counter (PC)</b> &mdash; the address of the next instruction to execute. On
+  x86-64 it's called <code>%rip</code> ("instruction pointer").</li>
+  <li><b>Register file</b> &mdash; a small set of named storage locations, heavily used because
+  they're far faster to access than memory.</li>
+  <li><b>Condition codes</b> &mdash; single-bit flags recording status from the most recent
+  arithmetic/logic instruction (e.g. did it produce zero, did it overflow), used to make
+  conditional branches work. You'll cover these in detail in the next module.</li>
+  <li><b>Memory</b> &mdash; one big byte-addressable array holding both code and data, including
+  the stack that supports function calls.</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>4. The x86-64 register set</h2>
+<p>
+  x86-64 has 16 general-purpose registers, each 64 bits wide. Each one can also be accessed as a
+  smaller, narrower window onto its own low-order bits &mdash; not as a separate register, but as
+  a different <i>name for part of the same storage</i>. This overlap is one of the most common
+  exam questions in this unit, so it's worth internalizing the pattern rather than memorizing a
+  table.
+</p>
+<table>
+  <tr><th>64-bit</th><th>32-bit</th><th>16-bit</th><th>8-bit</th><th>Historical role</th></tr>
+  <tr><td><code>%rax</code></td><td><code>%eax</code></td><td><code>%ax</code></td><td><code>%al</code></td><td>return value</td></tr>
+  <tr><td><code>%rbx</code></td><td><code>%ebx</code></td><td><code>%bx</code></td><td><code>%bl</code></td><td>callee-saved</td></tr>
+  <tr><td><code>%rcx</code></td><td><code>%ecx</code></td><td><code>%cx</code></td><td><code>%cl</code></td><td>4th argument</td></tr>
+  <tr><td><code>%rdx</code></td><td><code>%edx</code></td><td><code>%dx</code></td><td><code>%dl</code></td><td>3rd argument</td></tr>
+  <tr><td><code>%rsi</code></td><td><code>%esi</code></td><td><code>%si</code></td><td><code>%sil</code></td><td>2nd argument</td></tr>
+  <tr><td><code>%rdi</code></td><td><code>%edi</code></td><td><code>%di</code></td><td><code>%dil</code></td><td>1st argument</td></tr>
+  <tr><td><code>%rbp</code></td><td><code>%ebp</code></td><td><code>%bp</code></td><td><code>%bpl</code></td><td>base/frame pointer</td></tr>
+  <tr><td><code>%rsp</code></td><td><code>%esp</code></td><td><code>%sp</code></td><td><code>%spl</code></td><td>stack pointer</td></tr>
+  <tr><td><code>%r8</code>&ndash;<code>%r15</code></td><td><code>%r8d</code>&ndash;<code>%r15d</code></td><td><code>%r8w</code>&ndash;<code>%r15w</code></td><td><code>%r8b</code>&ndash;<code>%r15b</code></td><td>5th arg (<code>%r8</code>), 6th arg (<code>%r9</code>), general purpose</td></tr>
+</table>
+<p>
+  Read that table as one physical 64-bit storage cell per row, with four different names that
+  each expose a different number of its low-order bits: <code>%al</code> is literally the
+  low byte of <code>%ax</code>, which is the low 16 bits of <code>%eax</code>, which is the low
+  32 bits of <code>%rax</code>. The suffix letters you'll see on instructions mirror this:
+  <code>b</code> (byte, 1 byte), <code>w</code> (word, 2 bytes), <code>l</code> (long/double
+  word, 4 bytes), <code>q</code> (quad word, 8 bytes) &mdash; e.g. <code>movq</code> moves 8
+  bytes, <code>movl</code> moves 4.
+</p>
+<div class="callout warn">
+  <b>The one asymmetry to memorize:</b> writing to a 32-bit sub-register (e.g.
+  <code>movl $5, %eax</code>) automatically zeroes the upper 32 bits of the full 64-bit register
+  &mdash; this is a hard rule of the x86-64 ISA, not a compiler courtesy. But writing to the
+  16-bit or 8-bit sub-registers (<code>%ax</code>, <code>%al</code>) leaves the upper bits of the
+  containing register <i>untouched</i>, whatever garbage happened to be there before. This
+  inconsistency between the 32-bit case and the 16-/8-bit case is exactly the kind of thing exam
+  questions probe.
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text"><code>%rax</code> holds <code>0xffffffffffffffff</code>. After executing <code>movl $1, %eax</code>, what does <code>%rax</code> hold?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false"><code>0xffffffff00000001</code></button>
+    <button class="quiz-opt" data-correct="true"><code>0x0000000000000001</code></button>
+    <button class="quiz-opt" data-correct="false"><code>0xffffffffffffff01</code></button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Writing a 32-bit value to <code>%eax</code> zero-extends: it sets the low 32 bits to the new value <i>and</i> clears the upper 32 bits of <code>%rax</code>, unlike writes to the 16-bit <code>%ax</code> or 8-bit <code>%al</code>, which leave everything above them alone.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>5. AT&amp;T syntax (vs. Intel)</h2>
+<p>
+  There are two common notations for x86 assembly. Intel's own tools default to <b>Intel
+  syntax</b>; gcc, gdb, and objdump on Linux default to <b>AT&amp;T syntax</b>, which is what
+  CS:APP uses and what this entire course uses. You need to be able to recognize AT&amp;T syntax
+  on sight:
+</p>
+<table>
+  <tr><th>Feature</th><th>AT&amp;T (this course)</th><th>Intel</th></tr>
+  <tr><td>Registers</td><td><code>%rax</code></td><td><code>rax</code></td></tr>
+  <tr><td>Immediates</td><td><code>$0x18</code></td><td><code>0x18</code></td></tr>
+  <tr><td>Operand order</td><td><code>src, dst</code></td><td><code>dst, src</code></td></tr>
+  <tr><td>Size</td><td>suffix on mnemonic (<code>movq</code>)</td><td>inferred / operand-size prefix</td></tr>
+  <tr><td>Memory operand</td><td><code>-8(%rbp)</code></td><td><code>[rbp-8]</code></td></tr>
+</table>
+<p>
+  The two that trip people up most: registers always get a <code>%</code> prefix and immediate
+  (literal constant) operands always get a <code>$</code> prefix in AT&amp;T syntax &mdash; and
+  operands go <b>source, then destination</b>, the mirror image of how you'd read it in Intel
+  syntax or in a C assignment. <code>movq %rax, %rbx</code> means "copy the value in
+  <code>%rax</code> into <code>%rbx</code>," not the other way around.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>6. Anatomy of an instruction</h2>
+<p>Take this line from a real compiled function:</p>
+<pre><code class="language-x86asm">movq %rax, (%rbx)</code></pre>
+<p>
+  <code>mov</code> is the operation (move/copy data); the <code>q</code> suffix says it's moving a
+  quad word &mdash; 8 bytes. The source operand <code>%rax</code> is a register. The destination
+  operand <code>(%rbx)</code> uses parentheses to mean "memory at the address held in this
+  register" &mdash; i.e. <code>M[%rbx]</code>, not <code>%rbx</code> itself. So the whole
+  instruction is: take the 8-byte value currently in <code>%rax</code>, and store it to the memory
+  address that <code>%rbx</code> points at. This is the compiled form of a C statement like
+  <code>*dest = t;</code>, where <code>t</code> had been computed into <code>%rax</code> and
+  <code>dest</code> into <code>%rbx</code>.
+</p>
+<p>Instructions fall into three broad categories, all of which you'll see in detail over the next several modules:</p>
+<ul>
+  <li>Arithmetic/logic operations on register or memory data</li>
+  <li>Data transfer between memory and registers (load from memory, store to memory)</li>
+  <li>Control transfer that changes the PC: unconditional jumps, conditional branches, calls and returns</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>7. From C to assembly to bytes</h2>
+<p>Take this small C function:</p>
+<pre><code class="language-c">long plus(long x, long y);
+void sumstore(long x, long y, long *dest)
+{
+    long t = plus(x, y);
+    *dest = t;
+}</code></pre>
+<p>Compiling with <code>gcc -Og -S sum.c</code> stops the pipeline right after the compiler proper, producing a <code>.s</code> file of AT&amp;T assembly &mdash; no assembling or linking yet:</p>
+<pre><code class="language-x86asm">sumstore:
+   pushq   %rbx
+   movq    %rdx, %rbx
+   call    plus
+   movq    %rax, (%rbx)
+   popq    %rbx
+   ret</code></pre>
+<p>
+  <code>-S</code> is the flag to remember: it's the fastest way to answer "what did the compiler
+  actually do with this line of C," and you'll reach for it constantly in this unit and the ones
+  that follow. (<code>-Og</code> asks for light optimization that still keeps the assembly close
+  to readable; without it, gcc's default optimization can reorder and simplify code enough to
+  make it much harder to map back to the source.)
+</p>
+<p>
+  Assembling that <code>.s</code> file turns each instruction into raw bytes &mdash; for example
+  <code>movq %rax, (%rbx)</code> assembles to the 3 bytes <code>48 89 03</code>. The result still
+  needs the linker (Module 13) to resolve the call to <code>plus</code> before it's a runnable
+  executable.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>8. Reading it back: objdump</h2>
+<p>
+  Going the other direction &mdash; from raw bytes back to assembly &mdash; is
+  <b>disassembly</b>. <code>objdump -d</code> is the standard tool: it can be run on either a
+  complete executable or a single <code>.o</code> file, and it reconstructs an approximate
+  rendition of the assembly purely from the byte patterns, with no access to the original source:
+</p>
+<pre><code class="language-plaintext">0000000000400595 &lt;sumstore&gt;:
+  400595:  53               push   %rbx
+  400596:  48 89 d3         mov    %rdx,%rbx
+  400599:  e8 f2 ff ff ff   callq  400590 &lt;plus&gt;
+  40059e:  48 89 03         mov    %rax,(%rbx)
+  4005a1:  5b               pop    %rbx
+  4005a2:  c3               retq</code></pre>
+<p>
+  A few things to notice. x86-64 instructions are <b>variable length</b> &mdash; from 1 to 15
+  bytes &mdash; but the encoding is designed so that from a given starting byte, there is only one
+  possible decoding into instructions; a disassembler doesn't have to guess where one instruction
+  ends and the next begins. Also notice the disassembler dropped the <code>q</code> suffix
+  (<code>mov</code> instead of <code>movq</code>, <code>retq</code> shown instead of
+  <code>ret</code> in some tools) &mdash; the disassembler's naming convention can differ slightly
+  from the compiler's, even though they describe the same instructions. And because object code
+  carries so little information about the original source, disassembly can be applied to
+  <i>anything</i> that might be executable code &mdash; not just programs you compiled yourself.
+</p>
+<p>
+  gdb (Module 12) can disassemble too, from inside a running or loaded program:
+</p>
+<pre><code class="language-plaintext">gdb ./prog
+(gdb) disassemble sumstore</code></pre>
+
+<div class="quiz">
+  <div class="quiz-q-text">Which AT&amp;T-syntax instruction copies the value <code>24</code> into register <code>%rdi</code>?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false"><code>movq %rdi, 24</code></button>
+    <button class="quiz-opt" data-correct="true"><code>movq $0x18, %rdi</code></button>
+    <button class="quiz-opt" data-correct="false"><code>movq 24, %rdi</code></button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>AT&amp;T syntax needs <code>$</code> before a literal immediate value (24 = 0x18) and lists operands source-then-destination, so the immediate comes first and <code>%rdi</code> — the destination — comes last.</div>
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text">Which command produces the human-readable x86-64 assembly for a C file without assembling or linking it?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false"><code>gcc -c file.c</code></button>
+    <button class="quiz-opt" data-correct="true"><code>gcc -S file.c</code></button>
+    <button class="quiz-opt" data-correct="false"><code>objdump -d file.c</code></button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span><code>gcc -S</code> stops right after compilation and emits a <code>.s</code> text file of assembly. <code>-c</code> goes further and produces a binary <code>.o</code> object file; <code>objdump -d</code> disassembles an already-compiled binary, not a C source file.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../13-linking/lesson.html">&larr; 13. Linking</a>
+  <a class="next" href="../15-assembly-move-and-address/lesson.html">15. Move &amp; Address (movq, leaq) &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>02 — Information Storage | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="02-information-storage">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 02 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit1">Unit 1 &middot; Data Representation</span>
+    <span class="badge unit1" style="opacity:0.7">Exam: Game 1</span>
+  </div>
+  <h1>Information Storage</h1>
+  <p class="subtitle">
+    Every piece of data on a computer, no matter what it represents, is ultimately just
+    bits. This module covers how those bits are grouped into bytes, written compactly in
+    hex, ordered in memory (byte order is one of the most exam-tested ideas in the whole
+    course), addressed via pointers, and manipulated directly with bitwise operators
+    in C.
+  </p>
+  <div class="exam-note">
+    <b>CS:APP reference:</b> Chapter 2.1. &nbsp;|&nbsp;
+    <b>Due:</b> HW1 &mdash; Information Storage (closed Sep 16). &nbsp;|&nbsp;
+    <b>Tested on:</b> Game 1 and the Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Convert values between decimal, binary, and hexadecimal by hand</li>
+  <li>Explain why hexadecimal is used as shorthand for binary, and convert between them digit-by-digit</li>
+  <li>Determine the byte-level layout of a multi-byte value in both big-endian and little-endian order</li>
+  <li>Apply the bitwise operators &amp;, |, ^, ~ and the logical operators &amp;&amp;, ||, ! correctly, and explain how they differ</li>
+  <li>Apply logical vs. arithmetic shifts and predict their bit patterns</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. Bits, bytes, and why bits at all</h2>
+<p>
+  Every bit on a computer is either 0 or 1, and all data on a computer &mdash; numbers,
+  strings, images, instructions &mdash; is ultimately nothing but bits. What gives those
+  bits meaning is entirely how they're <i>interpreted</i>: the same bit pattern can be a
+  number, a character, or part of an image, depending purely on context. Eight bits are
+  grouped into one <b>byte</b>, which is the basic addressable unit of memory on virtually
+  every modern machine.
+</p>
+<p>
+  Bits exist because computers can only reliably distinguish two physical states, not
+  ten. A wire or transistor sitting near 0.0&ndash;0.2V reads as a 0, and one sitting near
+  0.9&ndash;1.1V reads as a 1; anything in between is ambiguous and unreliable to detect. A
+  base-2 (binary) representation maps directly onto "on" and "off," which is why binary
+  is the native representation of digital hardware even though humans think in decimal.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. Number bases: decimal, binary, hexadecimal</h2>
+<p>
+  To help humans, we display the same underlying bits in different bases. The key idea
+  behind <i>any</i> positional number system is that each digit's value depends on its
+  position: in base <code>b</code>, the digit <code>n</code> places left of the point is
+  worth <code>digit &times; b<sup>n</sup></code>, and <code>n</code> places right of the
+  point is worth <code>digit &times; b<sup>-n</sup></code>. For example,
+  <code>5132.13</code><sub>10</sub> means
+  <code>5&times;10<sup>3</sup> + 1&times;10<sup>2</sup> + 3&times;10<sup>1</sup> +
+  2&times;10<sup>0</sup> + 1&times;10<sup>-1</sup> + 3&times;10<sup>-2</sup></code>.
+  The exact same idea applies in binary: <code>101011.11</code><sub>2</sub> equals
+  <code>1&times;2<sup>5</sup> + 0&times;2<sup>4</sup> + 1&times;2<sup>3</sup> +
+  0&times;2<sup>2</sup> + 1&times;2<sup>1</sup> + 1&times;2<sup>0</sup> +
+  1&times;2<sup>-1</sup> + 1&times;2<sup>-2</sup> = 32+8+2+1+&frac12;+&frac14; =
+  43.75</code><sub>10</sub>.
+</p>
+<p>
+  In binary, the leftmost digit is the <b>most significant bit (MSB)</b> and the
+  rightmost is the <b>least significant bit (LSB)</b>. Writing long strings of 1s and 0s
+  by hand is tedious and error-prone, so we use <b>hexadecimal</b> (base 16) as a
+  compact shorthand: since <code>16 = 2<sup>4</sup></code>, exactly one hex digit encodes
+  exactly 4 bits, so you can convert between binary and hex one nibble at a time without
+  doing any arithmetic. <code>0FA1D37B</code><sub>16</sub> is shorthand for the 32-bit
+  pattern you'd get by expanding each hex digit into its own 4-bit binary group. In C,
+  hex literals use the <code>0x</code> prefix: <code>0x0FA1D37B</code> or the
+  case-insensitive <code>0x0fa1d37b</code>.
+</p>
+<table>
+  <tr><th>Hex</th><th>Decimal</th><th>Binary</th><th>Hex</th><th>Decimal</th><th>Binary</th></tr>
+  <tr><td>0</td><td>0</td><td>0000</td><td>8</td><td>8</td><td>1000</td></tr>
+  <tr><td>1</td><td>1</td><td>0001</td><td>9</td><td>9</td><td>1001</td></tr>
+  <tr><td>2</td><td>2</td><td>0010</td><td>A</td><td>10</td><td>1010</td></tr>
+  <tr><td>3</td><td>3</td><td>0011</td><td>B</td><td>11</td><td>1011</td></tr>
+  <tr><td>4</td><td>4</td><td>0100</td><td>C</td><td>12</td><td>1100</td></tr>
+  <tr><td>5</td><td>5</td><td>0101</td><td>D</td><td>13</td><td>1101</td></tr>
+  <tr><td>6</td><td>6</td><td>0110</td><td>E</td><td>14</td><td>1110</td></tr>
+  <tr><td>7</td><td>7</td><td>0111</td><td>F</td><td>15</td><td>1111</td></tr>
+</table>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why is hexadecimal specifically base 16, rather than, say, base 8 or base 32, chosen as binary shorthand?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">Because 16 is a round number in decimal</button>
+    <button class="quiz-opt" data-correct="true">Because 16 = 2^4, so one hex digit maps to exactly 4 bits with no leftover conversion arithmetic</button>
+    <button class="quiz-opt" data-correct="false">Because early keyboards only had 16 symbol keys available</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Any power of 2 works for this trick (octal, base 8 = 2^3, works too), but base 16 is the sweet spot for byte-oriented machines: since a byte is 8 bits and 8 is a multiple of 4, exactly two hex digits represent one full byte cleanly.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>3. Sizes of C data types</h2>
+<p>
+  Programs need to store numbers, and every variable is given a fixed number of bytes
+  &mdash; which is exactly why every integer type in C has a limited range instead of
+  being able to grow arbitrarily large. Typical sizes (in bytes) on 32-bit and 64-bit
+  x86-64 systems:
+</p>
+<table>
+  <tr><th>C type</th><th>32-bit</th><th>64-bit x86-64</th></tr>
+  <tr><td><code>char</code></td><td>1</td><td>1</td></tr>
+  <tr><td><code>short</code></td><td>2</td><td>2</td></tr>
+  <tr><td><code>int</code></td><td>4</td><td>4</td></tr>
+  <tr><td><code>long</code></td><td>4</td><td>8</td></tr>
+  <tr><td><code>float</code></td><td>4</td><td>4</td></tr>
+  <tr><td><code>double</code></td><td>8</td><td>8</td></tr>
+  <tr><td><code>long double</code></td><td>&mdash;</td><td>10/16</td></tr>
+  <tr><td>pointer</td><td>4</td><td>8</td></tr>
+</table>
+<p>
+  Notice that <code>long</code> and pointers change size between 32-bit and 64-bit
+  systems, but <code>int</code>, <code>float</code>, and <code>double</code> don't &mdash;
+  a common source of portability bugs when code assumes a pointer fits in an
+  <code>int</code>.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>4. Strings as bytes</h2>
+<p>
+  Text is stored using a character encoding that maps each character to a byte value.
+  This course uses <b>ASCII</b> (American Standard Code for Information Interchange),
+  where each printable character maps to one byte. The string <code>"Hello world!"</code>
+  is stored, byte by byte in hex, as <code>48 65 6C 6C 6F 20 77 6F 72 6C 64 21</code>.
+  Because a string's length isn't stored alongside it in C, the language needs a way to
+  mark where the string ends: a <b>null terminator</b>, a single <code>0x00</code> byte,
+  written as <code>\0</code> in C source. So <code>"Hello world!"</code> is actually 13
+  bytes in memory, not 12 &mdash; the last one being the terminating
+  <code>00</code>.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>5. Endianness: the order bytes sit in memory</h2>
+<p>
+  A multi-byte value like a 16-bit <code>17313</code><sub>10</sub> (<code>0x43A1</code>)
+  spans more than one memory address, and something has to decide which byte goes at the
+  lower address. There are exactly two conventions:
+</p>
+<ul>
+  <li><b>Big-endian:</b> the most significant byte is stored at the lowest address
+  &mdash; <code>0x43</code> then <code>0xA1</code>. This reads left-to-right the way
+  humans naturally write numbers, and it's the standard byte order for network
+  protocols.</li>
+  <li><b>Little-endian:</b> the least significant byte is stored at the lowest address
+  &mdash; <code>0xA1</code> then <code>0x43</code>. Most modern CPUs (x86, x86-64)
+  use this form natively.</li>
+</ul>
+<p>
+  Usually you never need to think about this &mdash; the compiler and CPU handle it
+  consistently for you. But it becomes directly visible whenever you inspect raw memory
+  (in a debugger, a memory dump, or by reinterpreting a pointer), or whenever data
+  crosses between machines with different native byte orders (which is exactly why
+  network protocols standardize on big-endian, often called "network byte order," so
+  senders and receivers agree regardless of their own native endianness).
+</p>
+<p><b>Worked example:</b> the 32-bit hex value <code>0x12345678</code> stored starting
+at address <code>0x100</code>:</p>
+<table>
+  <tr><th>Address</th><th>0x100</th><th>0x101</th><th>0x102</th><th>0x103</th></tr>
+  <tr><td>Big-endian</td><td>12</td><td>34</td><td>56</td><td>78</td></tr>
+  <tr><td>Little-endian</td><td>78</td><td>56</td><td>34</td><td>12</td></tr>
+</table>
+
+<div class="quiz">
+  <div class="quiz-q-text">You dump raw memory on an x86-64 machine (little-endian) and see the bytes <code>78 56 34 12</code> at consecutive addresses starting from the lowest. What 32-bit hex value do those bytes represent?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">0x78563412</button>
+    <button class="quiz-opt" data-correct="true">0x12345678</button>
+    <button class="quiz-opt" data-correct="false">There's not enough information to tell</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Little-endian stores the least significant byte first (at the lowest address). Reading the bytes 78 56 34 12 from low to high address and reversing the byte order to reconstruct the value gives 0x12345678.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>6. Addressing and pointers, at the byte level</h2>
+<p>
+  Memory is just a huge array of bytes, and every byte has its own unique address.
+  A pointer is nothing more than a variable that stores one of those addresses. When you
+  declare <code>int *p</code>, the pointer itself occupies however many bytes a pointer
+  takes on the target machine (4 on 32-bit, 8 on 64-bit x86-64, per the table above), and
+  it holds the byte address where a 4-byte <code>int</code> begins. Dereferencing that
+  pointer means the CPU reads the number of bytes appropriate to the pointer's type
+  (4 bytes for an <code>int *</code>) starting at that address, then interprets those
+  bytes according to the type and the machine's endianness. This is why pointer types
+  matter even though addresses themselves are just numbers: the type tells the compiler
+  how many bytes to read and how to interpret them.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>7. Boolean algebra and bitwise operators in C</h2>
+<p>
+  Underneath every higher-level operation, hardware implements four core boolean
+  operations bit-by-bit: AND, OR, exclusive-or (XOR), and NOT. C exposes these directly
+  as bitwise operators that operate independently on every bit of their operands:
+</p>
+<table>
+  <tr><th>Operation</th><th>C operator</th><th>Example (<code>A = 0110 1001</code>, <code>B = 0101 0101</code>)</th></tr>
+  <tr><td>AND</td><td><code>&amp;</code></td><td><code>A &amp; B = 0100 0001</code></td></tr>
+  <tr><td>OR</td><td><code>|</code></td><td><code>A | B = 0111 1101</code></td></tr>
+  <tr><td>XOR</td><td><code>^</code></td><td><code>A ^ B = 0011 1100</code></td></tr>
+  <tr><td>NOT</td><td><code>~</code></td><td><code>~B = 1010 1010</code></td></tr>
+</table>
+<p>
+  These are easy to confuse with C's <b>logical</b> operators &mdash; <code>&amp;&amp;</code>,
+  <code>||</code>, and <code>!</code> &mdash; which are a completely different operation.
+  In C, the value <code>0</code> is false and every other value is true; a logical
+  operator always produces exactly <code>0</code> or <code>1</code>, treating its entire
+  operand as one true/false value rather than operating bit-by-bit. Logical operators
+  also short-circuit: <code>&amp;&amp;</code> and <code>||</code> stop evaluating as soon
+  as the result is already determined. Given <code>A = 105</code>, <code>B = 85</code>,
+  <code>C = 75</code>: <code>A &gt; B &amp;&amp; B &gt; C</code> evaluates to true and stops
+  after confirming <code>A &gt; B</code> is already enough combined with the short
+  circuit rule to need the second check; <code>A &gt; B || B &gt; C</code> is true and
+  stops after just the first comparison, since one true operand already makes an OR
+  true.
+</p>
+<pre><code class="language-c">!0x41   // 0x00 (FALSE) — 0x41 is nonzero, so "not" it gives false
+!0x00   // 0x01 (TRUE)  — 0x00 is already false, so "not" it gives true
+!!0x41  // 0x01 (TRUE)  — double negation normalizes any nonzero to 1
+0x69 &amp;&amp; 0x55  // 0x01 (TRUE) — both operands are nonzero
+0x69 || 0x55  // 0x01 (TRUE) — at least one operand is nonzero</code></pre>
+
+<div class="quiz">
+  <div class="quiz-q-text">What is <code>0x69 &amp; 0x55</code> compared to <code>0x69 &amp;&amp; 0x55</code>?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="true">& does a bit-by-bit AND producing 0x41; && does a logical AND producing 0x01</button>
+    <button class="quiz-opt" data-correct="false">They produce the exact same result, just different syntax</button>
+    <button class="quiz-opt" data-correct="false">& is only valid on booleans, so this is a type error</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>& operates independently on each bit position (0x69 & 0x55 = 0x41). && treats each operand as a single true/false value — since both 0x69 and 0x55 are nonzero (true), the logical AND evaluates to 1 (TRUE), regardless of which specific bits are set.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>8. Shift operators</h2>
+<p>
+  C also provides shift operators, which move every bit in a value left or right by a
+  given number of positions:
+</p>
+<ul>
+  <li><b>Left shift</b> (<code>x &lt;&lt; y</code>): shifts bits left <code>y</code>
+  positions, discards the bits that fall off the left end, and fills with 0s on the
+  right.</li>
+  <li><b>Logical right shift</b> (<code>x &gt;&gt; y</code> for unsigned <code>x</code>):
+  shifts bits right, discards bits that fall off the right end, and fills with 0s on the
+  left.</li>
+  <li><b>Arithmetic right shift</b> (<code>x &gt;&gt; y</code> for signed <code>x</code>):
+  shifts bits right, but fills the left with copies of the original sign bit instead of
+  0s, so a negative number stays negative. This is what makes right shift on signed
+  types equivalent to dividing by a power of 2 (rounding toward negative infinity) &mdash;
+  a trick revisited in the Integer Arithmetic module.</li>
+</ul>
+<pre><code class="language-plaintext">x           = 0110 0010
+x &lt;&lt; 3      = 0001 0000
+x &gt;&gt; 2 (logical)    = 0001 1000
+x &gt;&gt; 2 (arithmetic) = 0001 1000   (same here — x is positive)
+
+x           = 1010 0010
+x &lt;&lt; 3      = 0001 0000
+x &gt;&gt; 2 (logical)    = 0010 1000
+x &gt;&gt; 2 (arithmetic) = 1110 1000   (sign bit replicated — x is negative)</code></pre>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../01-overview/lesson.html">&larr; 01. Overview</a>
+  <a class="next" href="../03-integer-representations/lesson.html">03. Integer Representations &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

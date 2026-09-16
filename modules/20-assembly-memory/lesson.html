@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>20 — Memory Management | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="20-assembly-memory">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 20 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit4">Unit 4 &middot; x86-64 Assembly</span>
+    <span class="badge unit4" style="opacity:0.7">Exam: Game 2</span>
+  </div>
+  <h1>Memory Management</h1>
+  <p class="subtitle">
+    Every process you run gets carved into a handful of regions &mdash; stack, heap, static
+    data, and executable code &mdash; each with its own lifetime and its own rules. Module 19
+    covered how the stack supports a single function call; this module zooms out to where that
+    stack actually lives in the address space, and reconnects the pointers and addresses you
+    learned as a C mental model (Module 10) to the concrete bytes assembly manipulates.
+  </p>
+  <div class="exam-note">
+    <b>CS:APP reference:</b> Chapter 3.10. &nbsp;|&nbsp;
+    <b>Tested on:</b> Game 2 and the Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Sketch the x86-64 Linux process memory layout and name what lives in each region</li>
+  <li>State which direction the stack and heap each grow, and why</li>
+  <li>Explain where local variables live during a function call and how they're addressed</li>
+  <li>Connect a C pointer to the actual memory address it holds at the assembly level</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. The process address space</h2>
+<p>
+  When the OS loads a program, it doesn't just hand it one flat blob of memory &mdash; it lays
+  out several distinct regions across the process's virtual address space, each serving a
+  different kind of storage:
+</p>
+<table>
+  <tr><th>Region</th><th>Contains</th><th>Notes</th></tr>
+  <tr><td>Stack</td><td>Local variables, saved registers, return addresses</td><td>Runtime stack, capped at 8&nbsp;MB by default; grows and shrinks automatically as calls happen</td></tr>
+  <tr><td>Heap</td><td>Dynamically allocated memory</td><td>Grows as needed via <code>malloc()</code>, <code>calloc()</code>, C++ <code>new</code>, etc.</td></tr>
+  <tr><td>Data</td><td>Global variables, <code>static</code> variables, string constants</td><td>Statically allocated &mdash; size fixed at compile/link time</td></tr>
+  <tr><td>Text / shared libraries</td><td>The executable machine instructions</td><td>Read-only, so a bug can't accidentally overwrite your own code</td></tr>
+</table>
+<p>
+  On x86-64 Linux, these regions sit at wildly different ends of a 64-bit address space (not
+  drawn to scale, since the space between them is mostly unused):
+</p>
+<pre><code class="language-plaintext">0x00007FFFFFFFFFFF  ----------------------  high addresses
+                      Stack        (grows DOWN, toward lower addresses)
+                      ...
+                      Shared Libraries
+                      Heap         (grows UP, toward higher addresses)
+                      Data
+                      Text
+0x0000000000400000  ----------------------
+0x0000000000000000                          low addresses</code></pre>
+<p>
+  The two dynamically-sized regions &mdash; stack and heap &mdash; are deliberately placed far
+  apart and told to grow <i>toward</i> each other: the stack grows down from a high address, the
+  heap grows up from a low one. That maximizes how much either one can expand before the process
+  runs out of address space, and it's also exactly why running off the end of a stack buffer
+  reaches toward lower addresses (a detail that matters a great deal in Module 21).
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why are the stack and heap placed at opposite ends of the address space, growing toward each other?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">It's arbitrary &mdash; any layout works equally well</button>
+    <button class="quiz-opt" data-correct="true">Neither region has a fixed size ahead of time, so giving them opposite ends to grow from maximizes how large either can become before colliding</button>
+    <button class="quiz-opt" data-correct="false">The CPU requires the stack to be at a higher physical address than the heap</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Both the stack and heap can grow during a single run of the program in ways the compiler can't predict, so placing them at opposite extremes of the address space and having them grow inward gives each the most room possible.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>2. Where local variables actually live</h2>
+<p>
+  A C local variable isn't a name the machine understands &mdash; it's either a register or a
+  specific offset within the current stack frame, chosen entirely by the compiler. Take:
+</p>
+<pre><code class="language-c">long call_incr() {
+    long v1 = 15213;
+    long v2 = incr(&amp;v1, 3000);
+    return v1 + v2;
+}</code></pre>
+<pre><code class="language-x86asm">call_incr:
+  subq    $16, %rsp          # carve out 16 bytes of frame
+  movq    $15213, 8(%rsp)    # v1 lives at 8(%rsp)
+  movl    $3000, %esi        # 2nd arg to incr: 3000
+  leaq    8(%rsp), %rdi      # 1st arg to incr: &amp;v1
+  call    incr
+  addq    8(%rsp), %rax      # v1 + incr's return value (v2)
+  addq    $16, %rsp          # release the frame
+  ret</code></pre>
+<p>
+  <code>v1</code> never gets a register of its own here &mdash; the compiler decided it needed a
+  real memory address (because <code>call_incr</code> takes its address with <code>&amp;v1</code>
+  to pass to <code>incr</code>), so it's stored 8 bytes into the newly allocated frame, at
+  <code>8(%rsp)</code>. <code>v2</code>, on the other hand, never gets a memory slot at all: the
+  compiler keeps it in <code>%rax</code> the whole time, straight from <code>incr</code>'s
+  return value through to the final <code>addq</code>. This is the general rule: the compiler
+  only spends stack space on a local variable when it has to &mdash; because it's too big for a
+  register, its address is taken, or there simply aren't enough registers to go around.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>3. Pointers are just addresses</h2>
+<p>
+  Module 10 introduced the C mental model of a pointer: a variable whose value is the address of
+  another variable. At the assembly level there is no separate "pointer type" at all &mdash; a
+  pointer is simply a 64-bit quantity in a register or memory slot that happens to hold an
+  address, and dereferencing it is simply using that value as the memory operand of an
+  instruction. Look again at <code>incr</code>, called from the example above:
+</p>
+<pre><code class="language-c">long incr(long *p, long val) {
+    long x = *p;
+    long y = x + val;
+    *p = y;
+    return x;
+}</code></pre>
+<pre><code class="language-x86asm">incr:
+  movq    (%rdi), %rax    # x = *p        (dereference: read from address in %rdi)
+  addq    %rax, %rsi      # y = x + val
+  movq    %rsi, (%rdi)    # *p = y        (dereference: write to address in %rdi)
+  ret                      # return x, already sitting in %rax</code></pre>
+<p>
+  <code>%rdi</code> holds <code>p</code> &mdash; not the value <code>*p</code> points at, but
+  the address itself, computed back in <code>call_incr</code> by <code>leaq 8(%rsp), %rdi</code>.
+  <code>movq (%rdi), %rax</code> is exactly C's <code>*p</code>: "go to the address held in
+  <code>%rdi</code> and read 8 bytes from there." <code>movq %rsi, (%rdi)</code> is exactly
+  <code>*p = y</code>: write through that same address. There's no magic — a C pointer
+  dereference always compiles down to using a register's <i>value</i> as a memory address,
+  rather than using the register's value directly.
+</p>
+<p>
+  This is also why <code>leaq</code> ("load effective address") and <code>movq</code> read so
+  differently even though they can look similar on the page: <code>leaq 8(%rsp), %rdi</code>
+  computes an address and stores <i>that address</i> in <code>%rdi</code> without touching
+  memory at all (it's how <code>&amp;expr</code> compiles), while <code>movq 8(%rsp), %rdi</code>
+  would instead go read 8 bytes of actual memory content from that address. Confusing the two is
+  one of the most common assembly-reading mistakes in this unit.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">In AT&amp;T syntax, what's the difference between <code>leaq 8(%rsp), %rdi</code> and <code>movq 8(%rsp), %rdi</code>?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">They're two spellings of the same instruction</button>
+    <button class="quiz-opt" data-correct="true"><code>leaq</code> computes the address <code>%rsp + 8</code> and stores that address in <code>%rdi</code>; <code>movq</code> reads 8 bytes of memory from that address and stores the value</button>
+    <button class="quiz-opt" data-correct="false"><code>leaq</code> only works on the stack, while <code>movq</code> works on any memory region</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span><code>leaq</code> ("load effective address") never touches memory — it just computes an address, which is exactly how C's <code>&amp;</code> operator compiles. <code>movq</code> with the same operand actually dereferences that address and loads its contents.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../19-assembly-control-and-data-flow/lesson.html">&larr; 19. Control &amp; Data Flow</a>
+  <a class="next" href="../21-assembly-buffer-overflow/lesson.html">21. Buffer Overflow &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

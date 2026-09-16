@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>16 — Arithmetic, Jumps &amp; Conditionals | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="16-assembly-arith-jump-cond">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 16 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit4">Unit 4 &middot; x86-64 Assembly</span>
+    <span class="badge unit4" style="opacity:0.7">Exam: Game 2</span>
+  </div>
+  <h1>Arithmetic, Jumps &amp; Conditionals</h1>
+  <p class="subtitle">
+    Move instructions get data where it needs to be, but a real program has to compute and make
+    decisions. This module covers the arithmetic instructions, the condition-code register that
+    every comparison and branch reads from, and how a C <code>if</code> statement collapses into
+    a compare and a conditional jump.
+  </p>
+  <div class="exam-note">
+    <b>CS:APP reference:</b> Chapter 3.6. &nbsp;|&nbsp;
+    <b>Tested on:</b> Game 2 and the Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Use the two-operand and one-operand arithmetic instructions, remembering AT&amp;T's source/destination order</li>
+  <li>Explain what CF, ZF, SF, and OF each mean, and which instructions set them</li>
+  <li>Distinguish <code>cmpq</code> and <code>testq</code> from ordinary arithmetic instructions</li>
+  <li>Map the <code>jX</code> / <code>setX</code> condition suffixes to the condition-code combinations they test</li>
+  <li>Trace how a C <code>if</code>/ternary compiles to compare-and-branch, and when the compiler uses a conditional move instead</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. Arithmetic instructions</h2>
+<p>
+  Two-operand arithmetic instructions follow the same <code>Src, Dest</code> order as
+  <code>movq</code> &mdash; and the same warning applies even more here, since subtraction
+  is not commutative:
+</p>
+<table>
+  <tr><th>Instruction</th><th>Computation</th></tr>
+  <tr><td><code>addq Src,Dest</code></td><td><code>Dest = Dest + Src</code></td></tr>
+  <tr><td><code>subq Src,Dest</code></td><td><code>Dest = Dest - Src</code></td></tr>
+  <tr><td><code>imulq Src,Dest</code></td><td><code>Dest = Dest * Src</code></td></tr>
+  <tr><td><code>salq Src,Dest</code> (= <code>shlq</code>)</td><td><code>Dest = Dest &lt;&lt; Src</code></td></tr>
+  <tr><td><code>sarq Src,Dest</code></td><td><code>Dest = Dest &gt;&gt; Src</code> (arithmetic &mdash; sign-extending)</td></tr>
+  <tr><td><code>shrq Src,Dest</code></td><td><code>Dest = Dest &gt;&gt; Src</code> (logical &mdash; zero-filling)</td></tr>
+  <tr><td><code>xorq Src,Dest</code></td><td><code>Dest = Dest ^ Src</code></td></tr>
+  <tr><td><code>andq Src,Dest</code></td><td><code>Dest = Dest &amp; Src</code></td></tr>
+  <tr><td><code>orq Src,Dest</code></td><td><code>Dest = Dest \| Src</code></td></tr>
+</table>
+<p>
+  Note that <code>Dest = Dest - Src</code>, not the other way around &mdash;
+  <code>subq %rax, %rbx</code> computes <code>%rbx -= %rax</code>. There's also no separate
+  signed/unsigned version of these instructions: the same bits mean different things depending
+  on how you interpret them, exactly like the two's-complement representation itself.
+</p>
+<p>One-operand instructions modify their single operand in place:</p>
+<table>
+  <tr><th>Instruction</th><th>Computation</th></tr>
+  <tr><td><code>incq Dest</code></td><td><code>Dest = Dest + 1</code></td></tr>
+  <tr><td><code>decq Dest</code></td><td><code>Dest = Dest - 1</code></td></tr>
+  <tr><td><code>negq Dest</code></td><td><code>Dest = -Dest</code></td></tr>
+  <tr><td><code>notq Dest</code></td><td><code>Dest = ~Dest</code></td></tr>
+</table>
+<p>
+  All of these exist in <code>b</code>/<code>w</code>/<code>l</code>/<code>q</code> sizes just
+  like <code>mov</code>. A representative compiled function shows several of these instructions
+  &mdash; including <code>leaq</code> pulling double duty as cheap arithmetic, from the previous
+  module &mdash; working together:
+</p>
+<pre><code class="language-c">long arith(long x, long y, long z) {
+  long t1 = x + y;
+  long t2 = z + t1;
+  long t3 = x + 4;
+  long t4 = y * 48;
+  long t5 = t3 + t4;
+  long rval = t2 * t5;
+  return rval;
+}</code></pre>
+<pre><code class="language-x86asm">arith:
+  leaq    (%rdi,%rsi), %rax    # t1 = x+y
+  addq    %rdx, %rax            # t2 = z+t1
+  leaq    (%rsi,%rsi,2), %rdx  # 3*y
+  salq    $4, %rdx               # t4 = 3y << 4 = 48y
+  leaq    4(%rdi,%rdx), %rcx    # t5 = (x+4) + t4
+  imulq   %rcx, %rax            # rval = t2 * t5
+  ret</code></pre>
+<p>
+  Notice <code>t3</code> (<code>x+4</code>) never gets its own instruction &mdash; the compiler
+  folds it directly into the displacement of the <code>leaq</code> that computes <code>t5</code>.
+  This is normal: once you're reading compiled assembly, a one-to-one line count with the
+  source is the exception, not the rule.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. Condition codes: CF, ZF, SF, OF</h2>
+<p>
+  Alongside the 16 general-purpose registers, the CPU keeps four single-bit
+  <b>condition code</b> registers that record facts about the most recent arithmetic result:
+</p>
+<table>
+  <tr><th>Flag</th><th>Name</th><th>Meaning</th></tr>
+  <tr><td><b>CF</b></td><td>Carry Flag</td><td>Set on unsigned overflow (a carry out of the most significant bit)</td></tr>
+  <tr><td><b>ZF</b></td><td>Zero Flag</td><td>Set if the result was exactly 0</td></tr>
+  <tr><td><b>SF</b></td><td>Sign Flag</td><td>Set if the result was negative (as signed)</td></tr>
+  <tr><td><b>OF</b></td><td>Overflow Flag</td><td>Set on signed (two's-complement) overflow</td></tr>
+</table>
+<p>
+  These are set <b>implicitly</b>, as a side effect, by most arithmetic instructions. For
+  <code>addq Src, Dest</code> computing <code>t = a + b</code>:
+</p>
+<ul>
+  <li>CF set if there's a carry out of the top bit (unsigned overflow)</li>
+  <li>ZF set if <code>t == 0</code></li>
+  <li>SF set if <code>t &lt; 0</code> as a signed value</li>
+  <li>OF set if the signed addition overflowed: <code>(a&lt;0 == b&lt;0) &amp;&amp; (t&lt;0 != a&lt;0)</code> &mdash; the two operands had the same sign but the result's sign flipped</li>
+</ul>
+<div class="callout">
+  <b>leaq is the exception.</b> Because <code>leaq</code> is address computation, not "real"
+  arithmetic, it never touches the condition codes &mdash; even though it internally adds and
+  multiplies numbers. If you see a comparison immediately after a <code>leaq</code>, it must be
+  testing something computed earlier, not the <code>leaq</code> result.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>3. Setting condition codes explicitly: cmp and test</h2>
+<p>
+  Sometimes you want the condition codes without keeping the arithmetic result around at all
+  &mdash; that's what comparisons compile to.
+</p>
+<pre><code class="language-x86asm">cmpq Src2, Src1    # computes Src1 - Src2, sets flags, discards the result</code></pre>
+<p>
+  <code>cmpq b, a</code> behaves like computing <code>a - b</code>, but the difference is
+  thrown away &mdash; only CF/ZF/SF/OF are updated. ZF set means <code>a == b</code>; SF set
+  (roughly) means <code>a &lt; b</code> as signed; CF set means <code>a &lt; b</code> as
+  unsigned.
+</p>
+<pre><code class="language-x86asm">testq Src2, Src1   # computes Src1 &amp; Src2, sets flags, discards the result</code></pre>
+<p>
+  <code>testq b, a</code> behaves like <code>a &amp; b</code>, again without storing anything.
+  One operand is frequently a bitmask, and the most common idiom is <code>testq %rax, %rax</code>
+  &mdash; ANDing a register with itself, which sets ZF exactly when the register is zero. That's
+  how compiled code implements <code>if (x)</code> and <code>if (!x)</code> checks and null-pointer
+  tests without wasting an instruction on a comparison against an explicit <code>$0</code>.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>4. Reading condition codes: setX and jX</h2>
+<p>
+  Once the flags are set, two instruction families read them back: <code>setX</code> turns a
+  condition into a 0/1 byte, and <code>jX</code> turns a condition into a branch.
+</p>
+<table>
+  <tr><th>Suffix (X)</th><th>Condition tested</th><th>Meaning</th></tr>
+  <tr><td><code>e</code></td><td>ZF</td><td>Equal / Zero</td></tr>
+  <tr><td><code>ne</code></td><td>~ZF</td><td>Not equal / Not zero</td></tr>
+  <tr><td><code>s</code></td><td>SF</td><td>Negative</td></tr>
+  <tr><td><code>ns</code></td><td>~SF</td><td>Nonnegative</td></tr>
+  <tr><td><code>g</code></td><td>~(SF^OF) &amp; ~ZF</td><td>Greater (signed)</td></tr>
+  <tr><td><code>ge</code></td><td>~(SF^OF)</td><td>Greater or equal (signed)</td></tr>
+  <tr><td><code>l</code></td><td>SF^OF</td><td>Less (signed)</td></tr>
+  <tr><td><code>le</code></td><td>(SF^OF) \| ZF</td><td>Less or equal (signed)</td></tr>
+  <tr><td><code>a</code></td><td>~CF &amp; ~ZF</td><td>Above (unsigned)</td></tr>
+  <tr><td><code>b</code></td><td>CF</td><td>Below (unsigned)</td></tr>
+</table>
+<p>
+  Every row applies to both <code>setX</code> (e.g. <code>sete</code>, <code>setg</code>) and
+  <code>jX</code> (e.g. <code>je</code>, <code>jg</code>), plus the unconditional
+  <code>jmp</code>. Notice the signed comparisons (<code>g</code>/<code>l</code>) check
+  <code>SF^OF</code> rather than SF alone &mdash; that XOR is what corrects for the case where
+  the subtraction itself overflowed, which would otherwise flip the sign bit's meaning.
+</p>
+<p>
+  <code>setX</code> instructions only ever write the <b>low byte</b> of a register, leaving
+  the rest of it untouched &mdash; so compiled code almost always follows a <code>setX</code>
+  with a <code>movzbl</code> to zero out the garbage that might be sitting in the upper bytes:
+</p>
+<pre><code class="language-c">int gt(long x, long y) {
+  return x > y;
+}</code></pre>
+<pre><code class="language-x86asm">gt:
+  cmpq    %rsi, %rdi   # computes (x - y), sets flags -- note reversed order!
+  setg    %al           # %al = 1 if x > y else 0
+  movzbl  %al, %eax     # zero-extend into the rest of %eax
+  ret</code></pre>
+<p>
+  That reversed order is worth internalizing: <code>cmpq %rsi, %rdi</code> computes
+  <code>%rdi - %rsi</code>, i.e. <code>x - y</code>, because AT&amp;T syntax reads
+  <code>cmpq Src2, Src1</code> and the comparison is <code>Src1</code> relative to
+  <code>Src2</code>.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">After <code>cmpq %rbx, %rax</code>, the ZF is 0 and the SF is 1 with no overflow (OF = 0). What does that tell you about %rax and %rbx (as signed values)?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">%rax == %rbx</button>
+    <button class="quiz-opt" data-correct="true">%rax &lt; %rbx</button>
+    <button class="quiz-opt" data-correct="false">%rax &gt; %rbx</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>cmpq %rbx, %rax computes %rax - %rbx and sets flags without storing the result. ZF=0 rules out equality. With no overflow, SF directly reflects the true sign of the difference: SF=1 means the result was negative, so %rax - %rbx &lt; 0, i.e. %rax &lt; %rbx.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>5. How an if-statement compiles</h2>
+<p>
+  Put compare and conditional jump together and you get the standard translation of a C
+  <code>if</code>/<code>else</code>:
+</p>
+<pre><code class="language-c">long absdiff(long x, long y) {
+  long result;
+  if (x > y)
+    result = x - y;
+  else
+    result = y - x;
+  return result;
+}</code></pre>
+<pre><code class="language-x86asm">absdiff:
+  cmpq    %rsi, %rdi   # compare x : y
+  jle     .L4            # if x &lt;= y, jump to the else branch
+  movq    %rdi, %rax     # (then branch) result = x
+  subq    %rsi, %rax     #               result -= y
+  jmp     .L5             # skip over the else branch
+.L4:                        # else: x &lt;= y
+  movq    %rsi, %rax     # result = y
+  subq    %rdi, %rax     # result -= x
+.L5:
+  ret</code></pre>
+<p>
+  Reading this is easiest if you mentally invert the test: the compiler jumps <i>past</i> the
+  "then" branch whenever the <i>opposite</i> of the C condition holds. <code>if (x > y)</code>
+  becomes "if NOT(x &gt; y), i.e. if x &lt;= y, skip to the else block" &mdash; hence
+  <code>jle</code>, not <code>jg</code>. Writing that out as legal (if ugly) C with
+  <code>goto</code> makes the correspondence explicit:
+</p>
+<pre><code class="language-c">long absdiff_j(long x, long y) {
+  long result;
+  int ntest = (x &lt;= y);   // NOT of (x &gt; y)
+  if (ntest) goto L2;
+  result = x - y;
+  goto L3;
+L2:
+  result = y - x;
+L3:
+  return result;
+}</code></pre>
+<p>
+  The same pattern extends directly to the C ternary operator, since <code>?:</code> is just
+  an <code>if</code>/<code>else</code> that produces a value:
+</p>
+<pre><code class="language-c">val = Test ? True_Expr : False_Expr;
+
+// equivalent goto form:
+ntest = !Test;
+if (ntest) goto L2;
+val = True_Expr;
+goto L3;
+L2:
+val = False_Expr;
+L3:
+</code></pre>
+
+<div class="quiz">
+  <div class="quiz-q-text">A compiled if-statement begins with <code>cmpq %rsi, %rdi</code> followed by <code>jge .L2</code>. What C condition guards the "then" block that comes right after the jump instruction?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false"><code>if (x &gt;= y)</code></button>
+    <button class="quiz-opt" data-correct="true"><code>if (x &lt; y)</code></button>
+    <button class="quiz-opt" data-correct="false"><code>if (x &lt;= y)</code></button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>The code immediately after a conditional jump is always the "skip past the else" path: jge jumps to .L2 (the else branch) whenever x &gt;= y, which means it falls through to the code right after the jump only when the opposite holds — x &lt; y. That fallthrough code is therefore the "then" block for if (x &lt; y).</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>6. Conditional moves: avoiding the branch entirely</h2>
+<p>
+  Branches are expensive on modern pipelined CPUs: mispredicting which way a branch goes forces
+  the processor to throw away speculative work and restart. For simple, side-effect-free
+  ternaries, GCC prefers an instruction family that computes <i>both</i> outcomes and then
+  picks one, with no branch at all:
+</p>
+<pre><code class="language-x86asm"># semantics: if (Test) Dest &lt;- Src   (else do nothing)
+cmovle Src, Dest</code></pre>
+<pre><code class="language-x86asm">absdiff:
+  movq    %rdi, %rax    # result = x
+  subq    %rsi, %rax    # result = x - y
+  movq    %rsi, %rdx    # eval = y
+  subq    %rdi, %rdx    # eval = y - x
+  cmpq    %rsi, %rdi    # compare x : y, set flags
+  cmovle  %rdx, %rax    # if x &lt;= y, result = eval
+  ret</code></pre>
+<p>
+  Both <code>x - y</code> and <code>y - x</code> get computed unconditionally, and the
+  <code>cmovle</code> just decides which one ends up in <code>%rax</code>. That's exactly why
+  conditional moves are only a safe optimization when the compiler can prove both branches are
+  <b>cheap and side-effect-free</b>:
+</p>
+<ul>
+  <li><b>Expensive computations</b> &mdash; <code>val = Test(x) ? Hard1(x) : Hard2(x);</code>
+  would do all the work of both <code>Hard1</code> and <code>Hard2</code> every time, even
+  though only one result is ever used.</li>
+  <li><b>Risky computations</b> &mdash; <code>val = p ? *p : 0;</code> exists specifically to
+  guard against dereferencing a null <code>p</code>. Compiling it with a conditional move would
+  dereference <code>p</code> unconditionally, crashing exactly the case the ternary was written
+  to avoid.</li>
+  <li><b>Side effects</b> &mdash; <code>val = x &gt; 0 ? x *= 7 : x += 3;</code> can't use a
+  conditional move because <code>x</code> would be mutated by the "true" expression even when
+  the "false" branch is the one that's logically supposed to run.</li>
+</ul>
+
+<div class="quiz">
+  <div class="quiz-q-text">Which of these C ternaries is safe for the compiler to implement with a conditional move (cmovX)?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false"><code>val = p ? *p : 0;</code></button>
+    <button class="quiz-opt" data-correct="true"><code>val = (x &gt; y) ? x - y : y - x;</code></button>
+    <button class="quiz-opt" data-correct="false"><code>val = x &gt; 0 ? x *= 7 : x += 3;</code></button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>x - y and y - x are both cheap, side-effect-free expressions safe to compute unconditionally — this is the absdiff example. The pointer dereference risks crashing on a NULL p if evaluated unconditionally, and the compound-assignment version has side effects (mutating x) that must not happen on the branch that "loses."</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../15-assembly-move-and-address/lesson.html">&larr; 15. Move &amp; Address</a>
+  <a class="next" href="../17-assembly-loops-switches/lesson.html">17. Loops &amp; Switches &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

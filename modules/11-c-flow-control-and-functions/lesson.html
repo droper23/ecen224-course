@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>11 — Flow Control &amp; Functions | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="11-c-flow-control-and-functions">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 11 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit2">Unit 2 &middot; C Programming</span>
+    <span class="badge unit2" style="opacity:0.7">Exam: Game 1</span>
+  </div>
+  <h1>Flow Control &amp; Functions</h1>
+  <p class="subtitle">
+    This module rounds out core C syntax: the branching and looping constructs that control
+    which statements run, and functions &mdash; how C organizes code into reusable, callable
+    units. Later in the course, once you're reading x86-64 assembly, you'll see exactly how
+    each of these constructs actually compiles down to jumps and comparisons and stack frames.
+    For now, the goal is fluency in the C-level syntax and semantics.
+  </p>
+  <div class="exam-note">
+    <b>Tested on:</b> Game 1 and the Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Write correct if/else chains and explain the dangling-else ambiguity</li>
+  <li>Choose between for, while, and do-while loops based on when the condition should be tested</li>
+  <li>Trace a switch statement including fallthrough behavior, and explain why <code>break</code> matters</li>
+  <li>Distinguish a function declaration (prototype) from its definition</li>
+  <li>Trace a recursive function's calls and explain, at a conceptual level, why each call needs its own stack frame</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. Statements and blocks, and the dangling else</h2>
+<p>
+  An expression becomes a <b>statement</b> once it's followed by a semicolon
+  (<code>x = 0;</code>, <code>i++;</code>). Braces <code>{ }</code> group multiple statements
+  into a single compound statement, a <b>block</b>, which can be used anywhere a single
+  statement is expected &mdash; as the body of an <code>if</code>, a loop, or a function.
+</p>
+<p>
+  The <code>if</code>/<code>else</code> statement expresses a decision: the condition is
+  evaluated first, and the following statement runs only if it's nonzero; the (optional)
+  <code>else</code> branch runs if it's zero.
+</p>
+<pre><code class="language-c">if (expression)
+  statement1;    /* runs if expression is nonzero */
+else
+  statement2;    /* runs if expression is zero */</code></pre>
+<div class="callout warn">
+  <b>The dangling else.</b> When <code>if</code> statements nest without braces, it's not
+  always visually obvious which <code>if</code> an <code>else</code> belongs to:
+  <pre><code class="language-c">if (n &gt; 0)
+  if (a &gt; b)
+    z = a;
+  else
+    z = b;</code></pre>
+  Indentation here is a lie the reader tells themselves &mdash; C's actual rule is that an
+  <code>else</code> always binds to the <b>closest previous <code>if</code> that doesn't
+  already have an <code>else</code></b>. So the <code>else</code> above binds to
+  <code>if (a &gt; b)</code>, not <code>if (n &gt; 0)</code>, regardless of how it's indented.
+  If you intend the outer binding, you must force it with explicit braces:
+  <code>if (n &gt; 0) { if (a &gt; b) z = a; } else z = b;</code>. When in doubt, use braces.
+</div>
+<p>
+  <code>else if</code> chains multiple conditions for a multi-way decision. Conditions are
+  evaluated top to bottom, in order, and the first true one wins &mdash; later branches are
+  never even evaluated once one has matched:
+</p>
+<pre><code class="language-c">if (score &gt;= 90)
+  grade = 'A';
+else if (score &gt;= 80)
+  grade = 'B';
+else if (score &gt;= 70)
+  grade = 'C';
+else
+  grade = 'F';</code></pre>
+
+<div class="quiz">
+  <div class="quiz-q-text">In <code>if (n &gt; 0) if (a &gt; b) z = a; else z = b;</code> (no braces), which <code>if</code> does the <code>else</code> belong to?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false"><code>if (n &gt; 0)</code> — the outer if</button>
+    <button class="quiz-opt" data-correct="true"><code>if (a &gt; b)</code> — the inner, closest if</button>
+    <button class="quiz-opt" data-correct="false">This is a compile error — ambiguous else</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>C resolves the dangling-else ambiguity with a fixed rule: an else always attaches to the nearest preceding if that doesn't already have its own else. Here that's if (a &gt; b), so z = b only runs when n &gt; 0 AND a &lt;= b — not simply whenever n &lt;= 0, which is what indentation alone might suggest.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>2. Switch statements and fallthrough</h2>
+<p>
+  <code>switch</code> is a multi-way branch that tests one expression against a set of
+  constant integer values:
+</p>
+<pre><code class="language-c">switch (c) {
+  case '+':
+    r = a + b;
+    break;
+  case '-':
+    r = a - b;
+    break;
+  case '*':
+    r = a * b;
+    break;
+  default:
+    printf("Invalid operation!\n");
+    break;
+}</code></pre>
+<div class="callout warn">
+  <b>Cases fall through by default.</b> Execution jumps to the matching <code>case</code>
+  label and then just keeps running statements downward &mdash; it does not automatically stop
+  at the next <code>case</code>. <code>break</code> is what causes an immediate exit from the
+  <code>switch</code>; omit it, and control "falls through" into the next case's code, running
+  it too:
+  <pre><code class="language-c">switch (c) {
+  case '+':
+  case '-':        /* no break above — '+' and '-' share this code */
+    r = do_add_or_sub(a, b, c);
+    break;
+  case '*':
+    r = a * b;
+    /* forgot break here! */
+  case '/':
+    r = r / c;      /* BUG: this now runs for '*' too, by accident */
+    break;
+}</code></pre>
+  Stacking case labels with no code between them (like <code>'+'</code> and <code>'-'</code>
+  above) is a deliberate, idiomatic use of fallthrough. Forgetting a <code>break</code> where
+  you didn't intend fallthrough is one of the most common switch-statement bugs in C.
+</div>
+<p>
+  <code>default</code> runs if no other case matches; it's optional, and if it's absent and no
+  case matches, the <code>switch</code> simply does nothing and control continues after it.
+  <code>default</code>'s position among the cases doesn't affect when it runs &mdash; it's only
+  reached by falling through or by no other case matching, not by its textual position &mdash;
+  though convention places it last.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>3. Loops: for, while, do-while</h2>
+<p>
+  C has three looping constructs, and the difference between them is really about <i>when</i>
+  the condition is tested and how the loop's bookkeeping is organized.
+</p>
+<pre><code class="language-c">while (expression)
+  statement;
+/* tests the condition BEFORE each iteration — may run zero times */
+
+for (expr1; expr2; expr3)
+  statement;
+/* equivalent to:
+   expr1;                 // initialize, runs once
+   while (expr2) {         // condition, tested before each iteration
+     statement;
+     expr3;                // increment/update, runs after each iteration
+   }
+*/
+
+do
+  statement;
+while (expression);
+/* tests the condition AFTER each iteration — always runs at least once */</code></pre>
+<p>
+  <code>for</code> is preferred whenever a loop has a natural init/test/update structure,
+  because it keeps all three pieces of loop control together and visible in one place, rather
+  than scattered across the loop body. Any of the three clauses can be omitted &mdash;
+  <code>for (;;) { ... }</code> is an idiomatic infinite loop &mdash; and the comma operator
+  lets you initialize or update more than one variable at once:
+</p>
+<pre><code class="language-c">for (i = 0, j = strlen(s) - 1; i &lt; j; i++, j--) {
+  /* i counts up, j counts down, together */
+}</code></pre>
+<p>
+  <code>do</code>/<code>while</code> is the right choice specifically when the loop body must
+  run at least once regardless of the condition &mdash; e.g. reading input and then checking
+  whether to continue:
+</p>
+<pre><code class="language-c">do {
+  c = getchar();
+} while (c == ' ');   /* skip spaces — but only checks AFTER reading one */</code></pre>
+<p>
+  <code>break</code> exits the innermost enclosing loop (or <code>switch</code>) immediately.
+  <code>continue</code> skips the rest of the current iteration's body and jumps straight to
+  the next iteration's test/update:
+</p>
+<pre><code class="language-c">for (i = 0; i &lt; n; i++) {
+  if (a[i] &lt; 0)
+    continue;      /* skip negative elements, but keep looping */
+  /* ...process positive elements... */
+}</code></pre>
+
+<div class="quiz">
+  <div class="quiz-q-text">A loop must read at least one line of input before it can decide whether to keep looping. Which loop construct is the natural fit?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false"><code>while</code></button>
+    <button class="quiz-opt" data-correct="true"><code>do</code>/<code>while</code></button>
+    <button class="quiz-opt" data-correct="false"><code>for</code></button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>while and for both test their condition BEFORE the first iteration, so if the condition itself depends on something the loop body hasn't produced yet (like a line just read), they can't be evaluated correctly on the first pass. do/while tests after the body runs, guaranteeing at least one execution before any check — exactly what "read, then decide whether to continue" needs.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>4. Functions: declaration vs. definition, revisited</h2>
+<p>
+  A function <b>definition</b> gives its full body:
+</p>
+<pre><code class="language-c">int addNumbers(int x, int y)
+{
+  return x + y;
+}</code></pre>
+<p>
+  A function <b>declaration</b> (also called a <b>prototype</b>) only announces the function's
+  name, return type, and parameter types &mdash; enough for the compiler to check calls against
+  it, without yet providing an implementation:
+</p>
+<pre><code class="language-c">int addNumbers(int, int);   /* declaration/prototype — no body */
+
+int main(void)
+{
+  printf("Result is: %d\n", addNumbers(4, 5));   /* compiler checks this call against the prototype */
+}
+
+int addNumbers(int x, int y)   /* the actual definition, can come later in the file */
+{
+  return x + y;
+}</code></pre>
+<p>
+  This is exactly the declaration/definition distinction from Module 6, applied to functions:
+  a function can be declared (via a prototype, often pulled in from a header file) in as many
+  places as needed, but defined exactly once. Prototypes are what let one <code>.c</code> file
+  call a function that's actually defined in a different <code>.c</code> file &mdash; the
+  caller only needs to know the function's signature at compile time; the linker resolves the
+  actual call to the real definition afterward.
+</p>
+<p>
+  If a function's return type isn't declared, older C compilers assume <code>int</code>;
+  modern compilers require you to state it explicitly, including <code>void</code> for a
+  function that returns nothing:
+</p>
+<pre><code class="language-c">void printBanner(void) {
+  printf("=== Welcome ===\n");
+  return;          /* bare return is fine — no value to give back */
+}
+
+double atof(char s[]) {   /* non-int return types must always be declared */
+  double val;
+  ...
+  return val;
+}</code></pre>
+<div class="callout warn">
+  A function whose non-<code>int</code> return type isn't declared before use (e.g. calling
+  <code>atof</code> in a file that never saw its prototype) is a real bug: the compiler falls
+  back to assuming <code>int</code>, silently reinterprets the returned bits as the wrong type,
+  and produces garbage results with no error at compile time on older compilers. Modern
+  compilers reject this outright — another good reason to always <code>#include</code> the
+  header that declares a library function before calling it.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>5. Recursion and the stack-frame intuition</h2>
+<p>
+  A <b>recursive</b> function calls itself, typically working on a smaller version of the same
+  problem each time, until it reaches a <b>base case</b> simple enough to answer directly
+  without recursing further.
+</p>
+<pre><code class="language-c">int factorial(int n)
+{
+  if (n &lt;= 1)
+    return 1;                       /* base case */
+  return n * factorial(n - 1);      /* recursive case */
+}
+/* factorial(4) = 4 * factorial(3)
+                = 4 * (3 * factorial(2))
+                = 4 * (3 * (2 * factorial(1)))
+                = 4 * (3 * (2 * 1))
+                = 24 */</code></pre>
+<p>
+  Every recursive call is a completely fresh function call, with its own independent copy of
+  every local variable and parameter &mdash; the <code>n</code> inside <code>factorial(3)</code>
+  is a different <code>n</code> from the one inside <code>factorial(4)</code>, even though
+  they share the same name in the source code. This is only possible because each call gets
+  its own private storage for its locals and parameters, layered on top of the call that made
+  it. That private storage region is called a <b>stack frame</b>, and the collection of
+  frames, one per currently-active call, is the <b>call stack</b>.
+</p>
+<p>
+  Conceptually, calling <code>factorial(4)</code> pushes a new frame for that call; it calls
+  <code>factorial(3)</code>, which pushes another frame on top; and so on, until
+  <code>factorial(1)</code> hits the base case and returns without recursing further. As each
+  call returns, its frame is popped off, and control resumes in the frame just below it, which
+  still has its own <code>n</code> and its own pending multiplication waiting to complete. A
+  chain of recursive calls with no base case, or a base case that's never reached, keeps
+  pushing frames indefinitely &mdash; this is what a <b>stack overflow</b> actually is: the call
+  stack running out of the memory reserved for it.
+</p>
+<div class="callout">
+  This is intentionally just the conceptual picture for now &mdash; what a stack frame
+  actually contains, exactly how it's laid out in memory, and how the CPU manages pushing and
+  popping frames at the assembly level is covered in depth starting in Module 15 and beyond,
+  once you're reading x86-64 assembly directly. The takeaway to carry forward from this module
+  is simpler: recursion works because each call's locals are independent, and that
+  independence has a real memory cost, one frame per active call.
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text">In <code>factorial(4)</code> calling <code>factorial(3)</code> calling <code>factorial(2)</code>, why don't the three calls' local variables named <code>n</code> interfere with each other?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">They do interfere — recursion only works because n happens to update consistently</button>
+    <button class="quiz-opt" data-correct="true">Each function call gets its own independent stack frame with its own copy of n, separate from every other active call's frame</button>
+    <button class="quiz-opt" data-correct="false">C automatically renames n to n1, n2, n3, ... for each recursive call</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Every call to a function — recursive or not — gets a fresh stack frame holding its own parameters and local variables. The three calls all happen to use the source-level name n, but they refer to three physically separate pieces of storage, one per frame, which is exactly why factorial(4)'s n can still be waiting at 4 while factorial(2)'s n is independently 2.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../10-c-pointers/lesson.html">&larr; 10. C Pointers</a>
+  <a class="next" href="../12-debugging/lesson.html">12. Debugging &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

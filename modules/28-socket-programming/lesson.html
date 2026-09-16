@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>28 — Socket Programming | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="28-socket-programming">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 28 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit5">Unit 5 &middot; Systems</span>
+    <span class="badge unit5" style="opacity:0.7">Exam: Final</span>
+  </div>
+  <h1>Socket Programming</h1>
+  <p class="subtitle">
+    Every browser tab, chat app, and database connection eventually comes down to the same
+    handful of OS calls: <code>socket</code>, <code>bind</code>, <code>listen</code>,
+    <code>accept</code>, <code>connect</code>, <code>send</code>, <code>recv</code>. This module
+    walks through the client/server socket API using real client and server programs, byte
+    order, and the read/write loop you need to move data reliably over a connection.
+  </p>
+  <div class="exam-note">
+    <b>CS:APP reference:</b> Chapter 11.4. &nbsp;|&nbsp;
+    This material comes after Game 2 and is tested only on the comprehensive Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Name the socket API calls a TCP server uses, in order, and what each one does</li>
+  <li>Name the socket API calls a TCP client uses, in order, and what each one does</li>
+  <li>Explain why network data needs a fixed byte order and what <code>htons</code>/<code>htonl</code> do about it</li>
+  <li>Read and write a loop that reliably sends or receives all the bytes of a message over a socket</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. A socket is just a file descriptor for the network</h2>
+<p>
+  Everything in this module builds on one idea you already know: in Unix, "open a
+  communication channel, get back an integer file descriptor, then <code>read</code>/<code>write</code>
+  on it" is the same pattern for files, pipes, and now network connections. A <b>socket</b> is
+  an endpoint for network communication, and the OS hands you back an <code>int</code> — a
+  socket descriptor — that you use the same way you'd use a file descriptor from <code>open()</code>.
+</p>
+<p>
+  The socket API sits below the application-layer protocols you've heard of (HTTP, DNS, SSH)
+  and rides on top of the transport layer — almost always TCP for this course. In the OSI
+  model's terms, everything above sockets (the message format, the meaning of the bytes) is
+  up to your application; sockets just get bytes from one process to another reliably, in
+  order.
+</p>
+<table>
+  <tr><th>Function</th><th>Side</th><th>Purpose</th></tr>
+  <tr><td><code>socket()</code></td><td>both</td><td>Create a new socket descriptor of a given type</td></tr>
+  <tr><td><code>bind()</code></td><td>server</td><td>Associate the socket with a local address/port</td></tr>
+  <tr><td><code>listen()</code></td><td>server</td><td>Put a bound TCP socket into a state where it accepts incoming connections</td></tr>
+  <tr><td><code>accept()</code></td><td>server</td><td>Block until a client connects; return a <i>new</i> socket for that one connection</td></tr>
+  <tr><td><code>connect()</code></td><td>client</td><td>Establish a TCP connection to a server's address/port</td></tr>
+  <tr><td><code>send()</code> / <code>recv()</code></td><td>both</td><td>Write/read bytes on an established connection</td></tr>
+  <tr><td><code>close()</code></td><td>both</td><td>Tear down the connection and release the descriptor</td></tr>
+</table>
+</section>
+
+<section class="lesson-section">
+<h2>2. The client: <code>socket</code> &rarr; <code>connect</code> &rarr; <code>send</code>/<code>recv</code></h2>
+<p>
+  A client's job is simple: build a socket, tell the OS where to connect it, then read and
+  write. Here is the real <code>client.c</code> distributed for this course, connecting to a
+  server on localhost:
+</p>
+<pre><code class="language-c">int sock = socket(AF_INET, SOCK_STREAM, 0);
+if (sock == -1) {
+    fprintf(stderr, "Could not create socket");
+    exit(EXIT_FAILURE);
+}
+
+struct sockaddr_in server;
+server.sin_family = AF_INET;
+server.sin_port = htons(8080);
+server.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+if (connect(sock, (struct sockaddr *)&server, sizeof(server)) < 0) {
+    fprintf(stderr, "Could not connect to server");
+    exit(EXIT_FAILURE);
+}</code></pre>
+<p>
+  <code>AF_INET</code> says "IPv4 address family"; <code>SOCK_STREAM</code> says "reliable,
+  connection-oriented byte stream" — i.e. TCP. (The alternative, <code>SOCK_DGRAM</code>, gives
+  you connectionless UDP datagrams instead — out of scope here, but it's why <code>socket()</code>
+  takes a type argument at all.)
+</p>
+<p>
+  <code>struct sockaddr_in</code> is the address structure: an address family, a port, and an
+  IPv4 address packed into a 32-bit field. <code>connect()</code> takes a generic
+  <code>struct sockaddr *</code> — that's why the call casts <code>&amp;server</code> — because
+  the socket API is address-family agnostic; the same functions work for IPv4, IPv6, and Unix
+  domain sockets, all of which lay out their address struct differently but the same size-prefixed
+  way.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>3. The server: <code>socket</code> &rarr; <code>bind</code> &rarr; <code>listen</code> &rarr; <code>accept</code></h2>
+<p>
+  A server needs two extra steps before it can talk to anyone: it has to claim a port
+  (<code>bind</code>) and announce that it's ready for connections (<code>listen</code>). Then
+  it loops, and each call to <code>accept()</code> blocks until a client shows up. Here's the
+  real <code>server.c</code>:
+</p>
+<pre><code class="language-c">int server_fd, client_socket, read_len;
+struct sockaddr_in address;
+char buffer[BUFFER_SIZE];
+
+// create server socket
+server_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+// configure server address
+address.sin_family = AF_INET;
+address.sin_addr.s_addr = INADDR_ANY;
+address.sin_port = htons(8080);
+
+// bind socket to address
+bind(server_fd, (struct sockaddr *)&address, sizeof(address));
+
+// listen for incoming connections
+listen(server_fd, 3);
+
+// accept incoming connections
+while (1) {
+    client_socket = accept(server_fd, (struct sockaddr *)&address,
+                            (socklen_t *)&address);
+
+    // read data from client and echo back
+    while ((read_len = recv(client_socket, buffer, BUFFER_SIZE - 1, 0)) > 0) {
+        buffer[read_len] = '\0';
+        send(client_socket, buffer, strlen(buffer), 0);
+    }
+
+    close(client_socket);
+}</code></pre>
+<p>
+  Three details worth noticing because they trip people up:
+</p>
+<ul>
+  <li><b><code>INADDR_ANY</code> vs a specific IP.</b> The client had to name a specific
+  address (<code>127.0.0.1</code>) to connect <i>to</i>. The server binds to
+  <code>INADDR_ANY</code> — "any interface on this machine" — so it accepts connections
+  arriving on any of the machine's network interfaces, not just one.</li>
+  <li><b><code>accept()</code> returns a <i>new</i> descriptor.</b> <code>server_fd</code>
+  stays open the whole time, listening for the next client. <code>client_socket</code>, the
+  return value of <code>accept()</code>, is a separate descriptor dedicated to that one
+  connection. This is the same shape as a file: the listening socket is like a directory
+  handle, the accepted socket is like the file you actually read and write.</li>
+  <li><b>The <code>3</code> in <code>listen(server_fd, 3)</code></b> is the backlog — how many
+  pending connections the OS will queue up before the server calls <code>accept()</code> on
+  them.</li>
+</ul>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why does the server keep <code>server_fd</code> open in a loop instead of closing it after the first client connects?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false"><code>server_fd</code> is required to send data to the client</button>
+    <button class="quiz-opt" data-correct="true"><code>server_fd</code> is the listening socket; it needs to stay open so <code>accept()</code> can hand out a new connection to the next client</button>
+    <button class="quiz-opt" data-correct="false">Closing it would free the port number for reuse by another program immediately</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span><code>server_fd</code> only ever listens — the actual conversation with each client happens on the separate descriptor <code>accept()</code> returns. Closing the listening socket would mean no future client could ever connect.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>4. Byte order: why <code>htons</code> exists</h2>
+<p>
+  <code>htons(8080)</code> shows up in both programs, wrapping a plain integer literal. That's
+  not decoration — it's converting the port number from your machine's native byte order to
+  <b>network byte order</b>.
+</p>
+<p>
+  Different CPU architectures disagree about which byte of a multi-byte integer comes first
+  in memory (x86 is little-endian; you saw this back in the integer representations module).
+  If a little-endian machine sent the two bytes of <code>0x1F90</code> (8080 decimal) in its
+  native order, and a big-endian machine on the other end interpreted those same bytes in
+  <i>its</i> native order, they'd disagree on the value. The network protocol has to pick one
+  order and enforce it — that's network byte order, which is big-endian.
+</p>
+<table>
+  <tr><th>Function</th><th>Direction</th><th>Size</th></tr>
+  <tr><td><code>htons()</code></td><td>host &rarr; network</td><td>short (16-bit) — ports</td></tr>
+  <tr><td><code>htonl()</code></td><td>host &rarr; network</td><td>long (32-bit) — IPv4 addresses</td></tr>
+  <tr><td><code>ntohs()</code></td><td>network &rarr; host</td><td>short (16-bit)</td></tr>
+  <tr><td><code>ntohl()</code></td><td>network &rarr; host</td><td>long (32-bit)</td></tr>
+</table>
+<p>
+  On a big-endian machine these functions are actually no-ops; on a little-endian machine
+  (essentially everything you've used) they swap the byte order. Either way, calling them is
+  what makes the code portable: you write the same source and it produces the correct
+  on-the-wire bytes regardless of the CPU it's compiled for. This is exactly why
+  <code>server.sin_port = htons(8080)</code> appears in both <code>client.c</code> and
+  <code>server.c</code> — the port field of <code>sockaddr_in</code> is defined to hold a
+  value in network byte order, full stop.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">Both <code>client.c</code> and <code>server.c</code> call <code>htons(8080)</code> before storing the port in <code>sockaddr_in</code>. What would go wrong if they stored <code>8080</code> directly instead?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">Nothing — <code>htons</code> is only needed for IP addresses, not ports</button>
+    <button class="quiz-opt" data-correct="true">On a little-endian machine, the raw bytes of 8080 would be in the wrong order for the network protocol, so the connection could be attempted on the wrong port</button>
+    <button class="quiz-opt" data-correct="false">The program would fail to compile</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>The <code>sin_port</code> field is specified to always hold its value in network (big-endian) byte order. On a little-endian CPU, skipping <code>htons</code> would store the bytes reversed, so the OS would bind/connect using a completely different 16-bit value than the one you intended.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>5. The read/write loop: why one <code>send()</code> isn't enough</h2>
+<p>
+  <code>send()</code> and <code>recv()</code> are allowed to transfer <i>fewer</i> bytes than
+  you asked for — a "short count" — and still return successfully. A busy network, a full
+  kernel buffer, or a large payload can all cause this. That's why <code>client.c</code> sends
+  its message inside a loop rather than trusting a single call to deliver everything:
+</p>
+<pre><code class="language-c">char message[] = "hello world";
+int num_bytes_sent = 0;
+int result = 0;
+int payload_size = strlen(message);
+
+while (num_bytes_sent < payload_size) {
+    result = send(sock, message + num_bytes_sent,
+                   payload_size - num_bytes_sent, 0);
+
+    if (result < 0) {
+        fprintf(stderr, "Could not send data");
+        exit(EXIT_FAILURE);
+    }
+
+    num_bytes_sent += result;
+}</code></pre>
+<p>
+  Each iteration advances the pointer (<code>message + num_bytes_sent</code>) and shrinks the
+  remaining count by however many bytes actually went out (<code>result</code>), and the loop
+  doesn't stop until everything has been sent. This is the same "don't assume the whole
+  transfer happens in one call" discipline you should already have from buffered file I/O.
+</p>
+<p>
+  The server's receive loop follows the mirror-image pattern, reading until <code>recv()</code>
+  returns <code>0</code> (the peer closed the connection) or a negative value (an error):
+</p>
+<pre><code class="language-c">while ((read_len = recv(client_socket, buffer, BUFFER_SIZE - 1, 0)) > 0) {
+    buffer[read_len] = '\0';
+    printf("Received: %s\n", buffer);
+    send(client_socket, buffer, strlen(buffer), 0);
+}</code></pre>
+<p>
+  Notice <code>buffer[read_len] = '\0'</code>: <code>recv()</code> gives you back raw bytes,
+  not a C string, so the code has to manually null-terminate before treating it like one — and
+  it sizes the buffer read as <code>BUFFER_SIZE - 1</code> precisely so there's always room for
+  that terminator without overflowing.
+</p>
+<div class="callout">
+  <b>The pattern to remember:</b> never treat a single <code>send()</code>/<code>recv()</code>
+  call as "the whole message." Loop on the byte count until you've moved everything you
+  expect, and check for <code>0</code> (peer closed) and negative (error) return values
+  explicitly.
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../27-computer-networks/lesson.html">&larr; 27. Computer Networks</a>
+  <a class="next" href="../29-concurrency/lesson.html">29. Concurrency &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

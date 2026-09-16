@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>27 — Computer Networks | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="27-computer-networks">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 27 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit5">Unit 5 &middot; Systems</span>
+    <span class="badge unit5" style="opacity:0.7">Exam: Final</span>
+  </div>
+  <h1>Computer Networks</h1>
+  <p class="subtitle">
+    So far every program you've written has lived on one machine. Network programming breaks
+    that boundary: two processes, potentially on opposite sides of the planet, exchanging bytes
+    over a connection as if they were talking directly to each other. This module builds the
+    conceptual model &mdash; addresses, ports, protocols, and connections &mdash; that the next
+    module's socket code is built on top of.
+  </p>
+  <div class="exam-note">
+    <b>CS:APP reference:</b> Chapter 11.1&ndash;11.3. &nbsp;|&nbsp;
+    <b>Tested on:</b> This material comes after Game 2 and is tested only on the comprehensive Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Describe the client-server model and identify the client and server roles in an interaction</li>
+  <li>Explain what an IP address and a port identify, and how together they form a socket address</li>
+  <li>Describe the layered network stack conceptually (application, transport, network, link)</li>
+  <li>Contrast TCP and UDP at a conceptual level: reliable ordered streams vs. fire-and-forget datagrams</li>
+  <li>Explain what DNS does and why it exists</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. The client-server model</h2>
+<p>
+  Nearly every network application is built around the same shape: a <b>server process</b> that
+  manages some resource, and one or more <b>client processes</b> that want something done with
+  it. The pattern repeats regardless of what the resource actually is (a file, a web page, a
+  database row):
+</p>
+<ol>
+  <li>The client sends a request to the server.</li>
+  <li>The server, which has been waiting for exactly this, handles the request.</li>
+  <li>The server sends a response back.</li>
+  <li>The client handles the response.</li>
+</ol>
+<p>
+  Client and server are <i>processes</i>, not machines &mdash; they might be running on the same
+  host or on opposite sides of the world; the model doesn't care. It's helpful to picture a
+  vending machine: the machine (server) sits idle managing its resource (snacks) until a
+  customer (client) makes a request (inserts money, presses a button), at which point it acts
+  and dispenses a response.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. A network, at a glance</h2>
+<p>
+  A computer network connects many hosts together through <b>routers</b>, and the Internet
+  itself is just an ad hoc interconnection of many smaller networks with no fixed topology and
+  wildly different link speeds. Data is broken into <b>packets</b> and sent hopping from router
+  to router until it reaches its destination; different packets between the same two hosts may
+  even take different physical routes to get there. Since the individual networks along the way
+  can be physically and technically incompatible with each other, every host and router runs
+  common <b>protocol software</b> &mdash; an agreed-upon set of rules for how to cooperate when
+  moving data from network to network &mdash; that smooths over those differences and makes the
+  whole patchwork look, to an application, like one uniform network.
+</p>
+<p>
+  A protocol does two jobs: it defines a uniform <b>naming scheme</b> (so every host can be
+  addressed the same way regardless of what physical network it's actually on), and it defines
+  a standard <b>packet format</b> for actually moving data &mdash; a header (metadata like size
+  and source/destination address) plus a payload (the actual data being sent). <b>TCP/IP</b> is
+  the protocol suite the Internet, and this course, is built on.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>3. Thinking in layers</h2>
+<p>
+  Protocol software is organized in layers, each one responsible for a different slice of the
+  problem and relying on the layer below it to move bytes reliably enough for its own job.
+  You don't need the full seven-layer OSI model for this course &mdash; a simplified four-layer
+  picture is enough:
+</p>
+<table>
+  <tr><th>Layer</th><th>Job</th><th>Examples</th></tr>
+  <tr><td>Application</td><td>What your program actually wants to say</td><td>HTTP, SSH, your own socket code</td></tr>
+  <tr><td>Transport</td><td>Getting a message between two processes (ports)</td><td>TCP, UDP</td></tr>
+  <tr><td>Network</td><td>Getting a packet between two hosts, across routers</td><td>IP</td></tr>
+  <tr><td>Link</td><td>Getting a frame across one physical hop (one LAN/WAN link)</td><td>Ethernet, WiFi</td></tr>
+</table>
+<p>
+  Each layer wraps the layer above it's data in its own header as the data heads out (this is
+  called <b>encapsulation</b>) and strips its own header back off as the data arrives at the
+  matching layer on the other end. A router in the middle only needs to look far enough into
+  a packet to make a forwarding decision at the network layer &mdash; it doesn't need to
+  understand the application data being carried at all. This layering is exactly what lets you
+  write socket code without caring whether the other machine is connected over Ethernet, WiFi,
+  or something else entirely; the layers below transport hide that from you completely.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>4. IP addresses and domain names</h2>
+<p>
+  Every host on the Internet is identified by at least one <b>IP address</b> &mdash;
+  traditionally a 32-bit number, conventionally written in <b>dotted-decimal notation</b> as
+  four bytes separated by periods, e.g. <code>128.187.16.184</code>. Since 32-bit numbers are
+  hard for humans to remember or type reliably, the Internet maintains a separate, human-friendly
+  naming layer: <b>domain names</b> like <code>byu.edu</code>, organized hierarchically (a
+  domain name is a sequence of words separated by periods, and each suffix is a broader
+  sub-domain the name belongs to).
+</p>
+<p>
+  <b>DNS (Domain Name System)</b> is the piece that ties these two together: a huge, distributed,
+  worldwide database mapping domain names to IP addresses. Conceptually, you can think of it as
+  a giant lookup table of host entries &mdash; your machine asks "what IP address does
+  <code>byu.edu</code> correspond to right now?" and gets an answer back, before it can actually
+  open a connection to that host. This lookup step is exactly why a DNS outage can make "the
+  internet is down" even though every server involved is actually running fine &mdash; the
+  names simply can't be resolved to addresses.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>5. Ports, sockets, and connections</h2>
+<p>
+  An IP address identifies a <i>host</i>, but a host can be running many network programs at
+  once (a web server, an SSH server, a mail server, all on the same machine). A <b>port</b> is
+  a 16-bit number that identifies a specific process on that host. Some ports are
+  <b>well-known</b>, permanently reserved for a specific kind of service by convention (port 22
+  for SSH, port 80 for HTTP, port 443 for HTTPS); others are <b>ephemeral</b>, assigned
+  automatically and temporarily by the OS to a client process when it initiates a connection.
+</p>
+<p>
+  A <b>socket address</b> is the pair <code>IP address : port</code>, uniquely identifying one
+  endpoint. A <b>connection</b> between a client and a server is uniquely identified by the
+  pair of socket addresses at both ends &mdash; the "socket pair"
+  <code>(client_addr:client_port, server_addr:server_port)</code>. This is exactly how a server
+  can accept requests from many different clients on the same well-known port at once: each
+  client connects from its own IP address and its own ephemeral port, so every connection's
+  socket pair is unique even though the server-side half is identical for all of them.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">A single web server, listening on port 80, is handling requests from two different browsers on two different laptops at the same time. How does the server (and the OS) keep the two connections apart?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">It can't — only one client can connect to a given port at a time</button>
+    <button class="quiz-opt" data-correct="true">Each connection is identified by its full socket pair — the client's own IP:port is different for each connection, even though the server's IP:port (80) is the same for both</button>
+    <button class="quiz-opt" data-correct="false">The server opens a new port for each browser automatically and tells them which one to use</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>A connection isn't identified by the server's socket address alone — it's identified by the (client IP:port, server IP:port) pair together. Since each client has a distinct IP address and its own ephemeral port, the two connections have distinct socket pairs even though they share the same server-side endpoint.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>6. TCP vs. UDP</h2>
+<p>
+  Both live at the transport layer, both use ports to route data to the right process, and both
+  ride on top of IP &mdash; but they make very different promises to the application above them.
+</p>
+<table>
+  <tr><th></th><th>TCP</th><th>UDP</th></tr>
+  <tr><td>Model</td><td>Connection-oriented byte stream</td><td>Connectionless datagrams</td></tr>
+  <tr><td>Reliability</td><td>Guaranteed delivery, retransmits lost data</td><td>No guarantee — a datagram can simply vanish</td></tr>
+  <tr><td>Ordering</td><td>Bytes arrive in the order they were sent</td><td>Datagrams can arrive out of order, or not at all</td></tr>
+  <tr><td>Overhead</td><td>Higher — handshakes, acknowledgments, retransmission</td><td>Lower — send and forget</td></tr>
+  <tr><td>Typical use</td><td>Web (HTTP), SSH, email — anything that needs correctness</td><td>Video/voice streaming, DNS lookups — anything that prefers speed and can tolerate loss</td></tr>
+</table>
+<p>
+  A <b>TCP</b> connection behaves like the "connections" described above: point-to-point (one
+  specific client, one specific server), full-duplex (both sides can send at the same time),
+  and reliable (a stream of bytes sent by one side is guaranteed to eventually arrive at the
+  other side, in the exact order it was sent) &mdash; the underlying protocol software handles
+  retransmitting lost packets and reordering out-of-order ones so the application never has to
+  think about it. <b>UDP</b>, by contrast, just fires individual, independent datagrams at a
+  destination with no setup and no guarantee any particular one arrives, arrives once, or
+  arrives in order. That sounds strictly worse, but for something like a live video call, a
+  datagram that arrives late is often useless anyway &mdash; UDP's lack of retransmission
+  overhead can matter more than occasional loss. The socket programming you'll do next module
+  builds directly on top of this choice: you pick TCP when correctness matters more than speed,
+  and UDP when speed matters more than perfect delivery.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why might a live video call use UDP instead of TCP, even though UDP offers no delivery guarantees?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">UDP is always faster than TCP regardless of the application</button>
+    <button class="quiz-opt" data-correct="true">A late or lost video frame is often useless anyway, so avoiding TCP's retransmission and ordering overhead is worth more than guaranteed delivery</button>
+    <button class="quiz-opt" data-correct="false">TCP cannot carry audio or video data at all</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>TCP's reliability comes from retransmitting lost data and holding later data until earlier data arrives in order — both of which add latency. For real-time media, a dropped or late frame is often not worth waiting on, so UDP's lower overhead is the better trade, even though it can lose data silently.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../26-dynamic-memory/lesson.html">&larr; 26. Dynamic Memory</a>
+  <a class="next" href="../28-socket-programming/lesson.html">28. Socket Programming &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

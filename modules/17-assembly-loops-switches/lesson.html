@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>17 — Loops &amp; Switches | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="17-assembly-loops-switches">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 17 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit4">Unit 4 &middot; x86-64 Assembly</span>
+    <span class="badge unit4" style="opacity:0.7">Exam: Game 2</span>
+  </div>
+  <h1>Loops &amp; Switches</h1>
+  <p class="subtitle">
+    x86-64 has no <code>for</code> instruction and no <code>switch</code> instruction &mdash;
+    everything you write with those keywords gets reduced to the compare-and-jump primitives
+    from the last module. This module is about recognizing the patterns the compiler builds
+    from those primitives, so you can read disassembled loops and jump tables and reconstruct
+    the C that produced them.
+  </p>
+  <div class="exam-note">
+    <b>CS:APP reference:</b> Chapter 3.6. &nbsp;|&nbsp;
+    <b>Tested on:</b> Game 2 and the Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>State the do-while &rarr; goto translation and use it as the base case for every other loop form</li>
+  <li>Recognize the jump-to-middle and guarded-do patterns gcc uses to compile <code>while</code> and <code>for</code> loops</li>
+  <li>Reconstruct a loop's C source structure (test, body, update) from disassembled x86-64</li>
+  <li>Explain how a jump table implements a <code>switch</code> in O(1) time, and read the indirect-jump syntax that dispatches through one</li>
+  <li>Explain why the compiler abandons the jump table for a sparse switch and falls back to a compare tree</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. There is no loop instruction</h2>
+<p>
+  <code>do</code>/<code>while</code>, <code>while</code>, and <code>for</code> are all C-level
+  conveniences. None of them has a dedicated machine instruction; the compiler lowers all three
+  down to the same raw material &mdash; conditional tests and jumps &mdash; using a handful of
+  standard translation patterns. Once you know the patterns, reading a compiled loop is a matter
+  of pattern-matching, not puzzling out each jump from scratch.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. do-while: the base case</h2>
+<p>
+  <code>do</code>/<code>while</code> is the simplest loop to translate, because its test already
+  comes <i>after</i> the body &mdash; exactly where a backward conditional jump wants to live:
+</p>
+<pre><code class="language-c">do
+  Body
+while (Test);</code></pre>
+<pre><code class="language-c">// equivalent goto form
+loop:
+  Body
+  if (Test)
+    goto loop;</code></pre>
+<p>
+  A worked example &mdash; <code>pcount</code> counts the number of 1-bits in <code>x</code>
+  ("popcount") by repeatedly checking the low bit and shifting:
+</p>
+<pre><code class="language-c">long pcount_do(unsigned long x) {
+  long result = 0;
+  do {
+    result += x &amp; 0x1;
+    x &gt;&gt;= 1;
+  } while (x);
+  return result;
+}</code></pre>
+<pre><code class="language-x86asm">movl    $0, %eax      # result = 0
+.L2:                     # loop:
+  movq  %rdi, %rdx
+  andq  $1, %rdx        #   t = x &amp; 0x1
+  addq  %rdx, %rax      #   result += t
+  shrq    %rdi           #   x &gt;&gt;= 1
+  jne     .L2             #   if (x) goto loop
+ret</code></pre>
+<p>
+  <code>shrq %rdi</code> (shift right, no explicit count means shift by 1) sets ZF exactly when
+  the result is 0, so <code>jne .L2</code> after it is testing "is <code>x</code>, after the
+  shift, still nonzero" &mdash; precisely the <code>while (x)</code> condition, with no separate
+  <code>testq</code> needed.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>3. while: two compiler strategies</h2>
+<p>
+  A <code>while</code> loop's test comes <i>before</i> the body, which doesn't fit the
+  do-while pattern directly &mdash; the loop might need to execute zero times. Compilers handle
+  this with one of two rewrites, both of which reduce back to do-while form:
+</p>
+<table>
+  <tr><th>Strategy</th><th>Idea</th><th>When you'll see it</th></tr>
+  <tr><td><b>Jump-to-middle</b></td><td>Jump straight to the test on entry; body sits above the test</td><td>Lower optimization levels (e.g. <code>-Og</code>)</td></tr>
+  <tr><td><b>Guarded-do</b></td><td>Guard the loop with an upfront <code>if (!Test) goto done;</code>, then it's a plain do-while</td><td>Higher optimization levels</td></tr>
+</table>
+<pre><code class="language-c">while (Test)
+  Body</code></pre>
+<pre><code class="language-c">// jump-to-middle
+goto test;
+loop:
+  Body
+test:
+  if (Test)
+    goto loop;
+done:</code></pre>
+<pre><code class="language-c">// guarded-do
+if (!Test)
+  goto done;
+loop:
+  Body
+  if (Test)
+    goto loop;
+done:</code></pre>
+<p>The same <code>pcount</code> loop, written as <code>while</code>, compiles (jump-to-middle) to:</p>
+<pre><code class="language-x86asm">movl    $0, %eax      # result = 0
+jmp     .L3              # goto test
+.L2:                     # loop:
+  movq  %rdi, %rdx
+  andq  $1, %rdx        #   t = x &amp; 0x1
+  addq  %rdx, %rax      #   result += t
+  shrq    %rdi           #   x &gt;&gt;= 1
+.L3:                     # test:
+jne     .L2              #   if (x) goto loop
+rep; ret</code></pre>
+<p>
+  The overall shape is identical to the do-while version except for one extra unconditional
+  <code>jmp</code> at the top &mdash; the giveaway that this loop's test was originally written
+  <i>before</i> the body. (<code>rep; ret</code> is a historical no-op prefix some compilers add
+  before a <code>ret</code> that's the target of a conditional jump, to avoid a branch-predictor
+  quirk on certain AMD chips; it doesn't change program behavior.)
+</p>
+<div class="callout">
+  <b>Reading tip:</b> to find a loop in disassembly, look for a <b>backward jump</b> &mdash; a
+  <code>jX</code> whose target address is earlier in the code than the jump itself. That target
+  is the top of the loop body. Then check whether there's an unconditional <code>jmp</code>
+  immediately before that target: if so, you're looking at jump-to-middle and the real test is
+  down at the bottom, right before the backward jump.
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text">You're reading disassembly and see an unconditional <code>jmp</code> to a label right after loading the loop's initial values, with the loop body sitting between that label's target and a conditional backward jump at the bottom. What loop-compilation pattern is this?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">do-while, compiled directly</button>
+    <button class="quiz-opt" data-correct="true">while (or for), compiled with jump-to-middle</button>
+    <button class="quiz-opt" data-correct="false">guarded-do</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>A plain do-while never needs the initial unconditional jmp — its test is naturally at the bottom already. The leading jmp to a test at the bottom is exactly the jump-to-middle rewrite of a while/for loop, which needs to reach the test before running the body the first time.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>4. for loops reduce to while loops</h2>
+<p>
+  <code>for</code> is just syntactic sugar over <code>while</code>, and the compiler treats it
+  that way &mdash; first rewriting <code>for</code> into an equivalent <code>while</code>, then
+  applying the while-loop translation from the previous section:
+</p>
+<pre><code class="language-c">for (Init; Test; Update)
+  Body</code></pre>
+<pre><code class="language-c">// equivalent while form
+Init;
+while (Test) {
+  Body
+  Update;
+}</code></pre>
+<p>Rewriting <code>pcount</code> as a <code>for</code> loop over each bit position:</p>
+<pre><code class="language-c">long pcount_for(unsigned long x) {
+  long result = 0;
+  for (size_t i = 0; i &lt; WSIZE; i++) {
+    unsigned bit = (x &gt;&gt; i) &amp; 0x1;
+    result += bit;
+  }
+  return result;
+}</code></pre>
+<pre><code class="language-x86asm">movl    $0, %eax        # result = 0
+movl    $0, %edx        # i = 0
+jmp     .L3                # goto test
+.L2:                       # loop:
+  shrq  %rdi              #   x &gt;&gt;= 1   (shifting x instead of re-shifting by i each time)
+  andq  $1, %rdi          #   t = x &amp; 0x1
+  addq  %rdi, %rax        #   result += t
+  incq    %rdx              #   i++
+.L3:                       # test:
+  cmpq  $WSIZE, %rdx      #   i : WSIZE
+jl      .L2                #   if (i &lt; WSIZE) goto loop
+rep; ret</code></pre>
+<p>
+  At higher optimization the compiler often uses the guarded-do form instead, and can even
+  <b>elide the initial test entirely</b> when it can prove the loop always runs at least once
+  &mdash; for example, when <code>i</code> starts at the constant <code>0</code> and
+  <code>WSIZE</code> is a positive constant, the compiler already knows <code>0 &lt; WSIZE</code>
+  holds, so it skips straight into the loop body without checking. That optimization disappears
+  the moment the bound comes from an unknown runtime parameter instead of a constant.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>5. Switch statements: jump tables</h2>
+<p>
+  An <code>if</code>/<code>else if</code> chain checking <code>n</code> cases costs up to
+  <code>n</code> sequential compares. When a <code>switch</code>'s case labels are small
+  integers packed close together, the compiler can instead build a <b>jump table</b>: an array
+  of code addresses, indexed directly by the switch expression, giving <b>O(1)</b> dispatch to
+  any case regardless of how many there are.
+</p>
+<pre><code class="language-c">switch (x) {
+  case val_0: Block0; break;
+  case val_1: Block1; break;
+  /* ... */
+  case val_n1: Blockn1; break;
+}</code></pre>
+<pre><code class="language-c">// extended-C idea of what the compiler builds
+goto *jtab[x];</code></pre>
+<p>
+  Here's a switch with multiple case labels sharing code (<code>5</code> and <code>6</code>),
+  a fall-through case (<code>2</code> falls into <code>3</code>), and a gap (<code>4</code> is
+  missing, handled by <code>default</code>):
+</p>
+<pre><code class="language-c">long switch_eg(long x, long y, long z) {
+  long w = 1;
+  switch (x) {
+    case 1:
+      w = y * z;
+      break;
+    case 2:
+      w = y / z;
+      /* fall through */
+    case 3:
+      w += z;
+      break;
+    case 5:
+    case 6:
+      w -= z;
+      break;
+    default:
+      w = 2;
+  }
+  return w;
+}</code></pre>
+<pre><code class="language-x86asm">switch_eg:
+  movq    %rdx, %rcx
+  cmpq    $6, %rdi       # x : 6
+  ja      .L8              # if x &gt; 6 (unsigned!), go straight to default
+  jmp     *.L4(,%rdi,8)   # indirect jump: fetch target from L4[x], go there
+
+  .section .rodata
+  .align 8
+.L4:                        # the jump table itself, one 8-byte address per case
+  .quad .L8   # x = 0 -&gt; default
+  .quad .L3   # x = 1
+  .quad .L5   # x = 2
+  .quad .L9   # x = 3
+  .quad .L8   # x = 4 -&gt; default (missing case)
+  .quad .L7   # x = 5
+  .quad .L7   # x = 6
+
+.L3:                        # case 1
+  movq    %rsi, %rax
+  imulq   %rdx, %rax       # y*z
+  ret
+.L5:                        # case 2
+  movq    %rsi, %rax
+  cqto
+  idivq   %rcx              # y/z
+  jmp     .L6                #   then fall into case 3's code
+.L9:                        # case 3 (entered directly, or via fallthrough from case 2)
+  movl    $1, %eax
+.L6:                        # merge point for the fallthrough
+  addq    %rcx, %rax       # w += z
+  ret
+.L7:                        # case 5, 6
+  movl    $1, %eax
+  subq    %rdx, %rax       # w -= z
+  ret
+.L8:                        # default
+  movl    $2, %eax
+  ret</code></pre>
+<p>
+  Two things to notice: first, <code>ja .L8</code> is an <b>unsigned</b> "above" comparison
+  against the constant <code>6</code>, which handles negative <code>x</code> and out-of-range
+  <code>x</code> in one instruction &mdash; a negative number, interpreted as unsigned, is huge,
+  so it's automatically "above" 6 and falls to default. Second, the indirect jump
+  <code>jmp *.L4(,%rdi,8)</code> uses exactly the addressing-mode syntax from Module 15: no
+  base register, index <code>%rdi</code>, scale <code>8</code> (because each table entry is an
+  8-byte address), displacement <code>.L4</code> (the table's start). It fetches the address
+  stored at <code>.L4 + 8&middot;x</code> and jumps there.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">In the switch_eg jump table, why does the compiler compare with <code>cmpq $6, %rdi; ja .L8</code> before the indirect jump, instead of jumping through the table unconditionally?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">To set ZF for the jmp instruction to use</button>
+    <button class="quiz-opt" data-correct="true">The table only has entries for 0-6; any other value of x has no valid table slot and must be routed to default explicitly</button>
+    <button class="quiz-opt" data-correct="false">It's a leftover no-op the compiler doesn't optimize away</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>A jump table's array only has as many slots as the range it was built for — here, x = 0 through 6. Any x outside that range (including negative x, which reads as huge when compared unsigned by ja) would index outside the table and jump to garbage, so the compiler always range-checks before the indirect jump and sends out-of-range values straight to the default case.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>6. When the compiler skips the jump table</h2>
+<p>
+  A jump table trades space for speed: it needs one entry for <i>every</i> integer in the
+  covered range, whether or not that value is an actual case label. That's a great trade when
+  cases are dense (0&ndash;6, no huge gaps). It's a terrible trade when they're sparse:
+</p>
+<pre><code class="language-c">/* Return x/111 if x is a multiple of 111 and &lt;= 999, else -1 */
+int div111(int x) {
+  switch (x) {
+    case 0:   return 0;
+    case 111: return 1;
+    case 222: return 2;
+    /* ... */
+    case 999: return 9;
+    default:  return -1;
+  }
+}</code></pre>
+<p>
+  A jump table covering <code>0</code>&ndash;<code>999</code> to serve 10 real cases would
+  need 1000 table entries &mdash; almost entirely pointing at <code>default</code>. The compiler
+  recognizes this is a bad trade and instead falls back to a <b>binary search</b> over the case
+  values: a balanced tree of <code>cmp</code>/<code>je</code>/<code>jg</code> comparisons that
+  narrows the range by half at each step.
+</p>
+<pre><code class="language-x86asm">cmpl    $444, %eax
+je      L8
+jg      L16
+cmpl    $111, %eax
+je      L5
+jg      L17
+testl   %eax, %eax
+je      L4
+jmp     L14              # no match -&gt; default
+...</code></pre>
+<p>
+  Instead of the O(1) dispatch a dense jump table gives you, this costs O(log n) comparisons
+  &mdash; still far better than a linear O(n) chain checking every case in listed order, and
+  without wasting memory on nearly a thousand unused table slots.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why doesn't gcc build a jump table for the div111 switch (cases 0, 111, 222, ..., 999)?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">Jump tables can't hold more than 8 entries</button>
+    <button class="quiz-opt" data-correct="true">A table spanning 0-999 would need ~1000 entries to serve only 10 real cases, wasting far more space than a compare tree costs in time</button>
+    <button class="quiz-opt" data-correct="false">default cases are incompatible with jump tables</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Jump tables are indexed by the raw case value, so their size is determined by the range of values, not the number of cases. A sparse switch like this one would need a huge, almost entirely-unused table; the compiler instead emits a binary-search-style tree of compares, which costs O(log n) time but no wasted memory.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../16-assembly-arith-jump-cond/lesson.html">&larr; 16. Arithmetic, Jumps &amp; Conditionals</a>
+  <a class="next" href="../18-assembly-structs-unions/lesson.html">18. Structs &amp; Unions &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

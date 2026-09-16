@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>03 — Integer Representations | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="03-integer-representations">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 03 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit1">Unit 1 &middot; Data Representation</span>
+    <span class="badge unit1" style="opacity:0.7">Exam: Game 1</span>
+  </div>
+  <h1>Integer Representations</h1>
+  <p class="subtitle">
+    Binary alone only gives you non-negative numbers. This module covers how negative
+    numbers get represented &mdash; and why nearly every real machine settled on one
+    specific scheme, two's complement, instead of the more "obvious" sign-bit approach.
+    We'll also cover the exact range formulas, sign extension, truncation, and the C
+    casting rules that turn "signed vs. unsigned" from a footnote into a real source of
+    bugs.
+  </p>
+  <div class="exam-note">
+    <b>CS:APP reference:</b> Chapter 2.2. &nbsp;|&nbsp;
+    <b>Due:</b> HW2 &mdash; Integer Representations (closed Sep 18). &nbsp;|&nbsp;
+    <b>Tested on:</b> Game 1 and the Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Convert between decimal and two's-complement binary by hand, for a given word size</li>
+  <li>State and apply the range formulas for unsigned and two's-complement signed integers</li>
+  <li>Explain why two's complement was chosen over sign-magnitude or one's complement</li>
+  <li>Apply sign extension and truncation correctly when converting between C integer types</li>
+  <li>Predict the (often surprising) result of C expressions that implicitly mix signed and unsigned operands</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. The problem: representing negative numbers</h2>
+<p>
+  Plain binary only encodes non-negative integers &mdash; there's no built-in notion of a
+  minus sign. The most obvious fix is a <b>sign bit</b>: reserve the most significant bit
+  to mean "negative" (1) or "positive" (0), and let the remaining bits encode the
+  magnitude. This is called <b>sign-magnitude</b> representation. It's intuitive, but it
+  has two serious problems. First, it wastes an encoding: with the MSB reserved for sign,
+  an n-bit number can only represent magnitudes up to <code>2<sup>n-1</sup> - 1</code>,
+  effectively halving your usable range compared to unsigned. Second, and worse, it
+  produces <b>two representations of zero</b> &mdash; <code>0000</code> ("+0") and
+  <code>1000</code> ("&minus;0") in 4 bits &mdash; which is wasteful and, worse, breaks
+  ordinary addition: adding <code>5 + (-5)</code> with sign-magnitude arithmetic does not
+  fall naturally out of ordinary binary addition the way you'd want.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. One's complement, and why it's not quite enough</h2>
+<p>
+  An alternative: represent a negative number by flipping (complementing) every bit of
+  its positive counterpart, instead of using a dedicated sign bit convention. This is
+  <b>one's complement</b>. It still has a sign bit (the MSB is 1 for negatives), and it
+  still has a negative zero (<code>1111</code> is "&minus;0" in 4 bits) &mdash; so it
+  doesn't fix the wasted-encoding problem. It does make addition <i>closer</i> to working
+  naturally, but not perfectly: adding two one's-complement numbers sometimes produces a
+  carry out of the top bit that has to be wrapped back around and added to the low bit
+  (an "end-around carry") to get the correct result. That extra step is exactly the kind
+  of special-case hardware logic engineers want to avoid.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>3. Two's complement: the representation everyone uses</h2>
+<p>
+  <b>Two's complement</b> starts from one's complement and removes the negative zero by
+  shifting every negative value down by one. The result, for a 4-bit example: instead of
+  one's complement's <code>-7</code> through <code>+7</code> with two zeros, two's
+  complement covers <code>-8</code> through <code>+7</code> &mdash; one extra negative
+  value, and exactly one representation of zero (<code>0000</code>). This asymmetry (one
+  more negative number than positive) is a direct, permanent consequence of removing the
+  duplicate zero, and it shows up throughout the course &mdash; for instance,
+  <code>-TMin</code> (negating the most negative value) always overflows.
+</p>
+<p>
+  The formal weight of each bit in two's complement is the same as unsigned binary,
+  <i>except</i> the most significant bit carries a <b>negative</b> weight,
+  <code>-2<sup>n-1</sup></code>, instead of positive. For a 4-bit number
+  <code>b<sub>3</sub>b<sub>2</sub>b<sub>1</sub>b<sub>0</sub></code>, the value is:
+</p>
+<pre><code class="language-plaintext">value = b3&middot;(-2^3) + b2&middot;2^2 + b1&middot;2^1 + b0&middot;2^0</code></pre>
+<p>
+  So <code>1011</code><sub>2C</sub> <code>= -8 + 0 + 2 + 1 = -5</code>, and
+  <code>1110</code><sub>2C</sub> <code>= -8 + 4 + 2 + 0 = -2</code>. To <b>negate</b> a
+  two's-complement number, there's a simple mechanical shortcut: invert every bit, then
+  add 1. For example, <code>5 = 0101</code>; invert to get <code>1010</code>; add 1 to
+  get <code>1011</code>, which is <code>-5</code> &mdash; matching the formula above.
+</p>
+<p>
+  Why did the industry converge on two's complement specifically? Because it makes
+  addition hardware trivially simple: you add two two's-complement numbers with
+  <i>exactly the same binary adder circuit</i> you'd use for unsigned addition, discard
+  any carry out of the top bit, and the result is correct two's-complement arithmetic
+  automatically &mdash; no end-around carry, no special-casing the sign bit. One adder
+  circuit handles both signed and unsigned addition identically at the bit level; only
+  the interpretation of the result differs. That hardware simplicity, more than any
+  mathematical elegance, is why every mainstream CPU today uses two's complement.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why did two's complement win out over sign-magnitude and one's complement as the standard signed representation?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">It's easier for humans to read the bit pattern directly</button>
+    <button class="quiz-opt" data-correct="true">It has a single representation of zero and lets addition use the exact same hardware circuit as unsigned addition</button>
+    <button class="quiz-opt" data-correct="false">It can represent larger magnitudes than any other scheme with the same number of bits</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Two's complement eliminates the wasted duplicate-zero encoding and, critically, makes signed addition just ordinary binary addition with the carry-out discarded — no end-around carry (one's complement) and no special sign-bit handling (sign-magnitude) required.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>4. Range formulas</h2>
+<p>
+  For a word size of <code>w</code> bits, the representable ranges are:
+</p>
+<table>
+  <tr><th>w</th><th>UMax (unsigned)</th><th>TMax (signed)</th><th>TMin (signed)</th></tr>
+  <tr><td>8</td><td>255</td><td>127</td><td>-128</td></tr>
+  <tr><td>16</td><td>65,535</td><td>32,767</td><td>-32,768</td></tr>
+  <tr><td>32</td><td>4,294,967,295</td><td>2,147,483,647</td><td>-2,147,483,648</td></tr>
+  <tr><td>64</td><td>18,446,744,073,709,551,615</td><td>9,223,372,036,854,775,807</td><td>-9,223,372,036,854,775,808</td></tr>
+</table>
+<p>
+  In general: <code>UMax = 2<sup>w</sup> - 1</code>,
+  <code>TMax = 2<sup>w-1</sup> - 1</code>, and
+  <code>TMin = -2<sup>w-1</sup></code>. Notice
+  <code>|TMin| = TMax + 1</code> &mdash; the direct consequence of two's complement
+  having one extra negative value, discussed above. Both signed and unsigned use exactly
+  the same number of total bit patterns (<code>2<sup>w</sup></code>) for a given
+  <code>w</code>; using signed representation doesn't lose any encodings, it just shifts
+  which range of integers those <code>2<sup>w</sup></code> patterns cover, from
+  <code>[0, 2<sup>w</sup>-1]</code> to <code>[-2<sup>w-1</sup>, 2<sup>w-1</sup>-1]</code>.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>5. Sign extension and truncation</h2>
+<p>
+  Converting a smaller integer type to a larger one (e.g. <code>short</code> to
+  <code>int</code>) is called <b>expansion</b>, and how you fill in the new, wider bits
+  depends on signedness:
+</p>
+<ul>
+  <li><b>Zero extension</b> (unsigned): pad with 0s on the left. E.g. unsigned
+  <code>short x = 15213</code> (<code>0011 1011 0110 1101</code>) expands to
+  <code>int ix = x</code> as <code>0000 0000 0000 0000 0011 1011 0110 1101</code>.</li>
+  <li><b>Sign extension</b> (signed): pad with copies of the original sign bit. E.g.
+  signed <code>short y = -15213</code> (<code>1100 0100 1001 0011</code>) expands to
+  <code>int iy = y</code> as <code>1111 1111 1111 1111 1100 0100 1001 0011</code>
+  &mdash; the value stays <code>-15213</code> because sign extension preserves both the
+  sign and the numeric value.</li>
+</ul>
+<p>
+  Going the other direction &mdash; a larger type to a smaller one &mdash; is
+  <b>truncation</b>: the high-order bits that don't fit are simply dropped, regardless
+  of signedness, and whatever bit pattern remains is reinterpreted in the smaller type.
+  This can silently change the value. <code>int x = 53191</code> is
+  <code>0000 0000 0000 0000 1100 1111 1100 0111</code>; truncating to a 16-bit
+  <code>short sx = x</code> keeps only the low 16 bits,
+  <code>1100 1111 1100 0111</code>, which as a signed <code>short</code> is
+  <code>-12345</code> &mdash; not <code>53191</code>. The bits are preserved exactly;
+  only the count of bits and their interpretation changed.
+</p>
+<p>
+  When a conversion needs to change <i>both</i> size and signedness at once (e.g.
+  <code>short</code> to <code>unsigned int</code>), C applies the size change first,
+  then reinterprets the sign &mdash; not the other way around.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>6. The signed/unsigned casting gotcha</h2>
+<p>
+  In C, converting between a signed and unsigned type of the <i>same size</i> does not
+  change a single bit. It only changes how those bits are interpreted:
+</p>
+<pre><code class="language-c">signed char v = -63;
+unsigned char uv = v;
+printf("v = %d, uv = %u\n", v, uv);
+// prints: v = -63, uv = 193</code></pre>
+<p>
+  Both <code>v</code> and <code>uv</code> hold the identical bit pattern
+  <code>1100 0001</code>. Interpreted as signed (two's complement):
+  <code>-2<sup>7</sup> + 2<sup>6</sup> + 2<sup>0</sup> = -128 + 64 + 1 = -63</code>.
+  Interpreted as unsigned: <code>2<sup>7</sup> + 2<sup>6</sup> + 2<sup>0</sup> = 128 + 64
+  + 1 = 193</code>. Same bits, two different numbers &mdash; purely a matter of
+  interpretation.
+</p>
+<p>
+  The real danger is that C does this conversion <i>implicitly</i>, not just on explicit
+  casts. Whenever a binary operator (including comparisons like <code>&lt;</code>,
+  <code>&gt;</code>, <code>==</code>) has one signed and one unsigned operand of the same
+  size, C silently converts the signed operand to unsigned before comparing:
+</p>
+<pre><code class="language-c">-1 < 0    // TRUE  — both operands are signed int, ordinary comparison
+-1 < 0U   // FALSE — the 0U forces -1 to be converted to unsigned first;
+          //         as unsigned, -1's bit pattern becomes UINT_MAX,
+          //         which is NOT less than 0</code></pre>
+<p>
+  This exact trap shows up in real, dangerous-looking code. Consider:
+</p>
+<pre><code class="language-c">/* WARNING: buggy code */
+float sum_elements(float a[], unsigned length)
+{
+    int i;
+    float result = 0;
+    for (i = 0; i <= length-1; i++)
+        result += a[i];
+    return result;
+}</code></pre>
+<p>
+  If <code>length</code> is <code>0</code>, the programmer's intent is clearly "the loop
+  shouldn't execute." But <code>length</code> is <code>unsigned</code>, so
+  <code>length - 1</code> is computed in unsigned arithmetic first: <code>0 - 1</code>
+  wraps around to <code>UINT_MAX</code> (a huge positive number), not <code>-1</code>.
+  Then <code>i &lt;= length-1</code> compares the signed <code>i</code> against that huge
+  unsigned value, <code>i</code> gets implicitly converted to unsigned too, and the loop
+  runs far out of bounds instead of not running at all. The fix is to avoid computing
+  <code>length - 1</code> in unsigned arithmetic in the first place &mdash; for example,
+  loop with <code>i &lt; length</code> instead of <code>i &lt;= length - 1</code>.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why does <code>-1 &lt; 0U</code> evaluate to FALSE in C?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">It's a compiler error, not a boolean result</button>
+    <button class="quiz-opt" data-correct="true">The signed -1 is implicitly converted to unsigned before the comparison, turning it into a huge positive number</button>
+    <button class="quiz-opt" data-correct="false">C always evaluates comparisons with unsigned literals as unsigned true</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>When one operand is unsigned and they're the same size, C's usual arithmetic conversions silently convert the signed operand to unsigned first. -1's two's-complement bit pattern reinterpreted as unsigned is UINT_MAX, which is not less than 0.</div>
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text"><code>int x = 53191;</code> is truncated to <code>short sx = x;</code>. What happens to the underlying bits during this conversion?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">The bits are rescaled proportionally to fit the smaller type</button>
+    <button class="quiz-opt" data-correct="true">The high-order bits that don't fit are simply dropped; the remaining low-order bits are kept exactly and reinterpreted</button>
+    <button class="quiz-opt" data-correct="false">The value is rounded to the nearest representable short value</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Truncation just drops the high-order bits that don't fit in the smaller type — no rounding or rescaling happens. That's exactly why 53191 truncates to the surprising value -12345: the remaining 16 bits happen to form a negative number in two's complement.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../02-information-storage/lesson.html">&larr; 02. Information Storage</a>
+  <a class="next" href="../04-integer-arithmetic/lesson.html">04. Integer Arithmetic &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>29 — Concurrency | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="29-concurrency">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 29 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit5">Unit 5 &middot; Systems</span>
+    <span class="badge unit5" style="opacity:0.7">Exam: Final</span>
+  </div>
+  <h1>Concurrency</h1>
+  <p class="subtitle">
+    A web server can't afford to handle one client at a time while everyone else waits — and
+    a CPU with eight cores is wasted if only one core ever runs. Concurrency is the umbrella
+    idea that lets a program make progress on more than one thing at once. This module surveys
+    the three main ways to get it (processes, threads, I/O multiplexing) and previews the
+    hazards that come with it, which modules 30 and 32 cover in depth.
+  </p>
+  <div class="exam-note">
+    <b>CS:APP reference:</b> Chapter 8.5, 12.7. &nbsp;|&nbsp;
+    This material comes after Game 2 and is tested only on the comprehensive Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Distinguish concurrency (interleaved progress) from parallelism (simultaneous progress)</li>
+  <li>Explain why concurrency and networking naturally go together</li>
+  <li>Name the three main approaches to concurrency and a defining trait of each</li>
+  <li>Describe, at a preview level, why shared state under concurrency causes race conditions</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. Concurrency vs. parallelism</h2>
+<p>
+  These two words get used interchangeably in casual conversation, but the course textbook is
+  precise about the difference:
+</p>
+<blockquote>
+  "By concurrently, we mean that the instructions of one process are interleaved with the
+  instructions of another process. In most systems, there are more processes to run than
+  there are CPUs to run them." &mdash; CS:APP 1.7.1
+</blockquote>
+<p>
+  Picture two people building two separate brick walls:
+</p>
+<ul>
+  <li><b>Serial:</b> one bricklayer builds wall A, finishes, then builds wall B.</li>
+  <li><b>Concurrent:</b> one bricklayer alternates — a few bricks on A, pause, a few bricks on
+  B, pause, back to A. Only one wall is actually being touched at any instant, but both make
+  progress over time.</li>
+  <li><b>Parallel:</b> hire a second bricklayer. Both walls now have bricks being laid on them
+  at the literal same instant.</li>
+</ul>
+<p>
+  Concurrency is about <i>structure</i> — a program is written to have multiple independent
+  logical flows that interleave. Parallelism is about <i>execution</i> — whether the hardware
+  actually runs more than one flow at the exact same instant. You can have concurrency without
+  parallelism (many processes time-sliced on a single core, each making incremental progress),
+  and you can have parallelism only when you have multiple cores to spread work across. Open a
+  task manager on any modern computer: there are always far more processes running than there
+  are physical cores, so the OS must be interleaving most of them concurrently even when a few
+  happen to run in true parallel.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. Why this matters now: cores stopped getting faster, they multiplied</h2>
+<p>
+  For decades, Moore's Law (transistor counts on a chip doubling roughly every two years) let
+  chipmakers ship faster and faster single cores, and existing sequential programs simply got
+  faster for free with each new generation. That trend broke down: clock-rate scaling hit
+  power and heat limits, and the industry pivoted to putting <i>multiple</i> cores on a single
+  chip instead (modern designs like Intel's Alder Lake even mix "performance" and
+  "efficiency" cores on the same die).
+</p>
+<p>
+  The consequence for you as a programmer: further performance gains increasingly require
+  <i>you</i> to write code that can use more than one core, not just wait for the next chip to
+  be faster. A <b>CPU-bound</b> program — one limited by CPU speed rather than by waiting on
+  I/O — only benefits from extra cores if it's structured to split its work across them.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>3. Three approaches to concurrency</h2>
+<p>
+  At the level this course cares about, there are three ways to structure a program so
+  multiple things can make progress at once:
+</p>
+<table>
+  <tr><th>Approach</th><th>Idea</th><th>Gives parallelism?</th></tr>
+  <tr><td>Processes</td><td>Clone the running program into a second, fully independent instance</td><td>Yes, across cores</td></tr>
+  <tr><td>Threads</td><td>Run multiple logical flows inside <i>one</i> process, sharing its memory</td><td>Yes, across cores</td></tr>
+  <tr><td>Async / I/O multiplexing</td><td>One flow of control, but never block waiting for slow I/O</td><td>No — one task runs at a time</td></tr>
+</table>
+<p>
+  <b>Processes</b> are created by cloning the currently running program (you'll see the exact
+  mechanism, <code>fork()</code>, in the next module). It's a relatively slow, heavy operation
+  precisely because the whole program's state gets duplicated. The payoff is isolation: by
+  default, no memory is shared between processes at all — if one wants to share data with
+  another, it has to do so explicitly, through a file or a socket.
+</p>
+<p>
+  <b>Threads</b> are the lighter alternative — roughly 10&times; faster to create than a
+  process — because multiple threads live inside the <i>same</i> process and share its memory
+  automatically. That shared-memory model simplifies communication (no file or socket needed
+  to pass data between threads), but it's also exactly where the hazards below come from.
+  Threads are provided and scheduled by the OS, just like processes.
+</p>
+<p>
+  <b>Async</b> (event-driven / I/O multiplexing) takes a completely different approach: instead
+  of creating more logical flows of control, one single flow of control avoids ever blocking.
+  It hands the OS a list of sockets or files it's waiting on (via <code>select</code>,
+  <code>poll</code>, or <code>epoll</code>), and the OS tells it which ones are ready. While
+  waiting for one client's slow I/O, the program can go handle a different client instead of
+  sitting idle. This gives you a form of concurrency with none of the true simultaneity of
+  parallelism — only one task actually executes at any instant — but it also sidesteps some of
+  the problems that come with genuinely parallel execution.
+</p>
+<div class="callout">
+  <b>Why concurrency and networking are almost always discussed together:</b> the network is
+  slow. Any program that talks to the network spends most of its time blocked, waiting for
+  bytes to arrive. The natural question is "what do you do while you wait?" — and the answer,
+  across all three approaches, is: handle another client in the meantime.
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text">A server uses I/O multiplexing (<code>select</code>/<code>poll</code>) on a single core to handle 500 simultaneous client connections. Is this concurrent, parallel, both, or neither?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">Parallel only</button>
+    <button class="quiz-opt" data-correct="true">Concurrent, but not parallel</button>
+    <button class="quiz-opt" data-correct="false">Neither — only one client is ever handled</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>All 500 connections make progress over time by interleaving on the single core (concurrent), but since there is only one core actually executing, no two connections are ever serviced at the literal same instant (not parallel).</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>4. The cost of concurrency: it's hard, and here's why</h2>
+<p>
+  Concurrency doesn't come for free. The human mind reasons sequentially by default, and a
+  concurrent program can interleave its logical flows in an enormous number of different
+  orders — the notion of "what happens before what" becomes misleading, because the scheduler
+  (not your source code's top-to-bottom order) decides the actual interleaving. Reasoning
+  through all possible orderings by hand is error-prone at best and often outright infeasible.
+</p>
+<p>
+  There's a well-known joke about this: "Some programmers, when confronted with a problem,
+  think 'I know, I'll solve it with threads!' Now they have two problems." The punchline is
+  the point of this section — concurrency solves a real performance/responsiveness problem,
+  but introduces a distinct class of correctness problems that only show up under concurrent
+  execution. Three classical failure modes:
+</p>
+<ul>
+  <li><b>Races.</b> The outcome depends on an arbitrary scheduling decision made elsewhere in
+  the system. Classic example: two people withdrawing from the same shared bank account at
+  the same time — if both read the balance before either writes back the new balance, one
+  withdrawal can silently vanish. This is the core hazard of <i>shared, mutable state</i>
+  under concurrency, and it's exactly what module 32 (Threads) covers in depth, because
+  threads share memory by default.</li>
+  <li><b>Deadlock.</b> Improper resource allocation prevents any forward progress at all — like
+  gridlocked traffic where every car is waiting on another car that can't move either. Each
+  party is individually blocked waiting for something only another blocked party can release.</li>
+  <li><b>Livelock / starvation / fairness.</b> External events or scheduling decisions
+  repeatedly prevent one particular task from making progress, even though the system as a
+  whole isn't stuck — like someone who keeps getting cut in line and never reaches the front.</li>
+</ul>
+<p>
+  The common thread underlying all three: as soon as more than one flow of execution can touch
+  the same resource, you need some mechanism to <b>synchronize</b> access to it — a way to say
+  "only one flow may do this step at a time," or "this flow must wait until that flow is
+  done." Designing that correctly, without introducing deadlock, is the central challenge of
+  concurrent programming, and it's the thread this course picks back up in module 32 with
+  mutexes.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why do processes largely avoid the race-condition hazard that threads are especially prone to?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">Processes always run one at a time, never concurrently</button>
+    <button class="quiz-opt" data-correct="true">By default, processes don't share memory, so there's usually no shared mutable state for two processes to race on</button>
+    <button class="quiz-opt" data-correct="false">The OS automatically synchronizes every process's memory accesses</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Races require shared, mutable state accessed by multiple concurrent flows. Processes are isolated by default — no memory sharing unless done explicitly through a file or socket — so there's far less shared state to race on. Threads, by contrast, share their entire address space automatically, which is exactly why races are the headline hazard covered in the Threads module.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../28-socket-programming/lesson.html">&larr; 28. Socket Programming</a>
+  <a class="next" href="../30-processes/lesson.html">30. Processes &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

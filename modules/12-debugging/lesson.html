@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>12 — Debugging | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="12-debugging">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 12 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit3">Unit 3 &middot; Under the Hood</span>
+    <span class="badge unit3" style="opacity:0.7">Exam: Game 1</span>
+  </div>
+  <h1>Debugging</h1>
+  <p class="subtitle">
+    Every program you write will have bugs. The difference between a frustrating afternoon
+    and a five-minute fix is whether you have a <i>process</i> for finding them. This module
+    covers the mindset that keeps bugs out in the first place, the categories of errors you'll
+    run into, and the concrete tools &mdash; compiler warnings, printf, and gdb &mdash; for
+    tracking down the ones that get through anyway.
+  </p>
+  <div class="exam-note">
+    <b>CS:APP reference:</b> Chapter 7.10. &nbsp;|&nbsp;
+    <b>Tested on:</b> Game 1 and the Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Explain why incremental development shrinks the search space for bugs</li>
+  <li>Distinguish syntactic, semantic, and algorithmic errors</li>
+  <li>Recognize the common causes of segfaults, uninitialized-variable bugs, off-by-one errors, and memory corruption</li>
+  <li>Read a compiler warning or error and use it to localize a bug, and know what <code>-Wall -Wextra</code> catch</li>
+  <li>Use gdb's core commands &mdash; breakpoints, step, print, backtrace &mdash; to inspect a running program</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. Debugging starts before you write the bug</h2>
+<p>
+  Edsger Dijkstra put it bluntly: <i>"If debugging is the process of removing software bugs,
+  then programming must be the process of putting them in."</i> You cannot avoid writing bugs
+  entirely, but you can radically change how many you write and how long they take to find,
+  just by how you approach writing code in the first place.
+</p>
+<p>
+  Contrast two strategies. <b>Guess-and-check</b> programming means trying something, running
+  it, and seeing what happens &mdash; low mental effort per line, but you're rarely sure the
+  code is correct in <i>all</i> cases, and the resulting code is often hard to read later, which
+  makes the debugging you eventually have to do slower. <b>Intentional</b> programming means
+  thinking through what a piece of code needs to do before you write it, prioritizing code that
+  is clear and easy to follow. It costs more up front. It saves far more later, because clear
+  code is easier to reason about when something goes wrong.
+</p>
+<p>
+  The same trade-off shows up at the scale of a whole program. <b>Whole development</b> &mdash;
+  writing a large chunk of a program and only then testing it &mdash; means that when something
+  breaks, the bug could be anywhere in all the code you just wrote: a needle in a haystack.
+  <b>Incremental development</b> &mdash; writing a small, testable chunk, confirming it works,
+  and only then moving to the next chunk &mdash; keeps the search space small. If a chunk was
+  working before your last change and isn't now, you know almost exactly where to look.
+  <b>Test-driven development</b> pushes this further: write the tests a piece of code should
+  pass <i>before</i> you write the code, so every change you make afterward is checked
+  automatically, both for the new behavior and for the old behavior you don't want to break.
+</p>
+<p>
+  None of this is free advice about style for its own sake &mdash; meaningful variable names and
+  clear structure are a bug countermeasure. Code like <code>Balance = Balance - LastPayment;</code>
+  is easy to check against your intent; code that does the same arithmetic with variables named
+  <code>I</code>, <code>II</code>, and <code>III</code> is not, and every extra second you spend
+  decoding what a variable <i>is</i> is a second you're not spending on whether the logic is
+  correct.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. Three kinds of errors</h2>
+<p>
+  When something goes wrong, it helps to know which category you're in, because each one is
+  found differently:
+</p>
+<ul>
+  <li><b>Syntactic errors</b> &mdash; the code isn't legal C at all (a missing semicolon, an
+  unmatched brace). The compiler catches these for you and refuses to produce an executable.</li>
+  <li><b>Semantic errors</b> &mdash; the code is legal C, but it doesn't do what you intended.
+  The compiler has no way to know your intent, so it compiles cleanly and the bug only shows up
+  when you run the program.</li>
+  <li><b>Algorithmic errors</b> &mdash; the code does exactly what you intended, but what you
+  intended doesn't solve the actual problem. The program "works" in the sense of matching your
+  design, and the design is wrong.</li>
+</ul>
+<p>A single missing brace shows how syntactic and semantic errors can hide next to each other:</p>
+<pre><code class="language-c">main (){
+  int i
+  int j;
+  for (i = 0; i <= 10; i++)
+      j = i * 7;
+     printf("%d x 7 = %d\n", i, j);
+}</code></pre>
+<p>
+  <code>int i</code> with no semicolon is a <b>syntactic</b> error &mdash; the compiler will
+  refuse to build this and point you straight at the line. But even after you fix that, the
+  <code>printf</code> is not inside the loop body (there's no <code>{ }</code> around it), so it
+  only runs once, after the loop finishes, instead of once per iteration. That compiles fine
+  &mdash; it's a <b>semantic</b> error, and it will only show up when you notice the output is
+  missing 10 lines.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>3. Common C bugs to recognize on sight</h2>
+<p>
+  A few categories of bug account for a disproportionate share of debugging time in C, precisely
+  because C does not protect you from them the way higher-level languages do.
+</p>
+<ul>
+  <li><b>Segmentation faults.</b> The OS kills your process because it tried to access memory it
+  doesn't own &mdash; dereferencing a <code>NULL</code> or uninitialized pointer, indexing far
+  past the end of an array, or using memory after it's been freed. A segfault tells you
+  <i>that</i> you touched bad memory, not <i>why</i> &mdash; that's what a debugger is for.</li>
+  <li><b>Uninitialized variables.</b> Local variables in C do not start at zero; they hold
+  whatever bits were already sitting in that stack slot. Code that reads a variable before
+  writing to it can appear to work by accident (if the leftover bits happen to be harmless) and
+  then fail unpredictably later, often when you least expect it &mdash; which makes it one of the
+  nastier bugs to reproduce.</li>
+  <li><b>Off-by-one errors.</b> Loop and array bounds are the classic source: a loop written as
+  <code>for (i = 0; i &lt;= n; i++)</code> over an array of size <code>n</code> reads or writes
+  one element past the end on the last iteration. C performs no bounds checking, so this doesn't
+  necessarily crash immediately &mdash; it silently corrupts whatever memory happens to sit right
+  after the array.</li>
+  <li><b>Memory corruption.</b> Writing outside the bounds you were given &mdash; through a bad
+  array index, a bad pointer, or a buffer that's too small for what you copy into it &mdash; can
+  overwrite a completely unrelated variable, a saved return address, or the heap's own bookkeeping
+  data. The symptom often shows up far away from the cause: a variable that "changes on its own"
+  a hundred lines after the actual bad write. This is also the root cause behind buffer-overflow
+  security vulnerabilities, which you'll see again later in this course.</li>
+</ul>
+
+<div class="quiz">
+  <div class="quiz-q-text">A program crashes with a segmentation fault. What does that tell you?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">Exactly which line of source code caused the bug</button>
+    <button class="quiz-opt" data-correct="true">The program accessed memory it doesn't have permission to access</button>
+    <button class="quiz-opt" data-correct="false">The program ran out of CPU time</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>A segfault means the OS caught an illegal memory access &mdash; a bad pointer dereference, an out-of-bounds array access, use-after-free, and so on. It doesn't localize the bug for you; that's what tools like gdb and careful reasoning are for.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>4. Let the compiler find bugs for you</h2>
+<p>
+  The cheapest bug to fix is one the compiler catches before you ever run the program. If your
+  code doesn't compile, that's where to start &mdash; and read the line number the compiler
+  reports, though remember it's an estimate: a missing brace or semicolon on one line often
+  surfaces as an error several lines later, at the point where the compiler's parsing finally
+  breaks down.
+</p>
+<p>
+  Warnings matter just as much as errors, because C will happily compile code that is almost
+  certainly a bug &mdash; an assignment where you meant a comparison, a function used before it's
+  declared, a variable that's never used. By default <code>gcc</code> stays quiet about most of
+  these. Turning on warnings makes the compiler tell you:
+</p>
+<pre><code class="language-plaintext">gcc -Wall -Wextra -o prog main.c sum.c</code></pre>
+<ul>
+  <li><code>-Wall</code> enables a broad set of warnings for constructs that are usually
+  mistakes (unused variables, comparisons that are always true, a suspicious-looking
+  <code>if</code> with an empty body, and more)</li>
+  <li><code>-Wextra</code> adds further warnings <code>-Wall</code> doesn't cover</li>
+</ul>
+<p>
+  Treat warnings as errors you haven't looked at yet. A clean compile with <code>-Wall -Wextra</code>
+  won't catch algorithmic or all semantic errors, but it eliminates a large class of mistakes for
+  free, before you ever have to reach for a debugger.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>5. Finding bugs: confirmation, not guessing</h2>
+<p>
+  Debugging is fundamentally a process of <b>confirming assumptions</b> until you find the one
+  that's false. As Norman Matloff put it, finding a bug means confirming the many things you
+  believe are true about your program, one at a time, until you hit the one that isn't. You
+  believe a variable has a certain value at a certain point; you believe an
+  <code>if</code>/<code>else</code> takes the branch you expect; you believe a function receives
+  the arguments you passed it. Debugging is checking each of those beliefs against reality.
+</p>
+<p>
+  The efficient way to do this is <b>binary search</b> over your program's behavior: pick a point
+  roughly in the middle of the buggy code path, confirm whether everything up to that point is
+  correct, and then recurse into whichever half still contains the bug. This is exactly why
+  incremental development (Section 1) helps so much &mdash; it does binary search for you in
+  advance, by keeping "everything up to the last chunk I tested" already confirmed.
+</p>
+<p>There are two main ways to actually observe what your program is doing at a point of interest:</p>
+</section>
+
+<section class="lesson-section">
+<h2>6. Printf debugging</h2>
+<p>
+  The simplest technique: add <code>printf</code> calls at strategic points to print out a
+  variable's value, or to print a marker that tells you which branch of an <code>if</code> was
+  taken. It requires no special tools and works anywhere you can run the program, which makes it
+  genuinely effective for confirming a specific assumption quickly.
+</p>
+<p>
+  It has real drawbacks, though. Every time you want to check something new, you have to add a
+  print, recompile, and rerun; once you're done, you have to remember to remove the prints again
+  (or they clutter your real output). For a large program, or a bug that only appears after a lot
+  of execution, this recompile-rerun cycle is slow compared to a debugger, where you can inspect
+  any variable at a breakpoint without editing the source at all.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>7. Using gdb</h2>
+<p>
+  <code>gdb</code> (the GNU debugger) lets you pause a running C program and inspect it directly
+  &mdash; step through it instruction by instruction, or line by line, and look at any variable's
+  actual value, without adding a single print statement. You'll use it in this course's lab
+  assignments, and again in the bomb and attack lab assignments later in the semester, so it's
+  worth being comfortable with the basics now. Compile with <code>-g</code> so gdb can map
+  machine instructions back to your source lines:
+</p>
+<pre><code class="language-plaintext">gcc -g -o prog main.c sum.c
+gdb ./prog</code></pre>
+<table>
+  <tr><th>Command</th><th>What it does</th></tr>
+  <tr><td><code>break sum</code> / <code>b sum.c:20</code></td><td>Set a breakpoint at a function name or a file:line &mdash; execution stops there</td></tr>
+  <tr><td><code>run</code> / <code>r</code></td><td>Start (or restart) the program, running until the first breakpoint</td></tr>
+  <tr><td><code>next</code> / <code>n</code></td><td>Execute the next source line, stepping <i>over</i> function calls</td></tr>
+  <tr><td><code>step</code> / <code>s</code></td><td>Execute the next source line, stepping <i>into</i> function calls</td></tr>
+  <tr><td><code>print x</code> / <code>p x</code></td><td>Print the current value of variable or expression <code>x</code></td></tr>
+  <tr><td><code>backtrace</code> / <code>bt</code></td><td>Show the call stack &mdash; which function called which, all the way to <code>main</code></td></tr>
+  <tr><td><code>continue</code> / <code>c</code></td><td>Resume running until the next breakpoint (or the program ends)</td></tr>
+</table>
+<p>
+  The workflow this enables is exactly the "confirmation" idea from Section 5: set a breakpoint
+  right before the point where you believe something is true, run, and use <code>print</code> to
+  check it. If it's wrong, <code>backtrace</code> tells you how you got there, and you move your
+  breakpoint earlier to find where the value went bad.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">Your program segfaults somewhere inside a function that's called from several places. You want to know which call path led to the crash. Which gdb command tells you that?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false"><code>next</code></button>
+    <button class="quiz-opt" data-correct="true"><code>backtrace</code></button>
+    <button class="quiz-opt" data-correct="false"><code>print</code></button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span><code>backtrace</code> prints the full chain of function calls (the call stack) that led to the current point of execution, which is exactly what you need to find which caller triggered the crash.</div>
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text">Which best describes the relationship between printf-debugging and gdb?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">gdb replaces printf debugging entirely; printf should never be used</button>
+    <button class="quiz-opt" data-correct="true">Both let you confirm assumptions about a running program; gdb avoids the recompile/rerun cycle that printf requires for each new check</button>
+    <button class="quiz-opt" data-correct="false">printf can inspect the call stack, but gdb cannot</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Both are tools for the same underlying task &mdash; confirming what your program is actually doing. printf is quick and requires no tooling but needs a recompile for every new question; gdb lets you inspect any variable or the call stack interactively, without touching the source.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../11-c-flow-control-and-functions/lesson.html">&larr; 11. Flow Control &amp; Functions</a>
+  <a class="next" href="../13-linking/lesson.html">13. Linking &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

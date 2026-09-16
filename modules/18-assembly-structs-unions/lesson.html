@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>18 — Structs &amp; Unions | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="18-assembly-structs-unions">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 18 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit4">Unit 4 &middot; x86-64 Assembly</span>
+    <span class="badge unit4" style="opacity:0.7">Exam: Game 2</span>
+  </div>
+  <h1>Structs &amp; Unions</h1>
+  <p class="subtitle">
+    The machine has no idea what a <code>struct</code> is. By the time your code runs, every
+    field access has been flattened into a fixed numeric offset into a block of memory. This
+    module covers how the compiler picks those offsets &mdash; including the padding it inserts
+    that you never asked for &mdash; and how a <code>union</code> throws the whole "each field
+    gets its own space" idea away on purpose.
+  </p>
+  <div class="exam-note">
+    <b>CS:APP reference:</b> Chapter 3.9. &nbsp;|&nbsp;
+    <b>Tested on:</b> Game 2 and the Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Explain why struct field access compiles to a fixed-offset memory reference, with no runtime lookup</li>
+  <li>Compute a struct's field offsets, size, and padding by hand from its declaration and alignment rules</li>
+  <li>Explain why alignment requirements exist, in terms of how memory hardware actually works</li>
+  <li>Compute the address of a field within an array of structs</li>
+  <li>Explain how a union's memory layout differs from a struct's, and identify legitimate uses for that overlap</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. A struct is just an offset table, resolved at compile time</h2>
+<p>
+  A C struct is represented at the machine level as nothing more than a contiguous block of
+  memory, big enough to hold all its fields. The compiler decides, once, how many bytes each
+  field needs and at what offset from the start of the struct it lives &mdash; and every field
+  access in your program becomes a memory reference at that fixed offset. Field order in memory
+  always exactly matches declaration order, even in the (unusual) case where the compiler could
+  have packed things more tightly by reordering them.
+</p>
+<pre><code class="language-c">struct rec {
+  int a[4];        // offset 0,  16 bytes (4 ints * 4 bytes)
+  size_t i;         // offset 16, 8 bytes
+  struct rec *next; // offset 24, 8 bytes
+};                   // total size: 32 bytes</code></pre>
+<p>
+  The critical thing to internalize: once this compiles, <b>the machine-level program has no
+  concept of "struct rec" at all</b>. <code>r-&gt;i</code> doesn't look up a field named
+  <code>i</code> at runtime &mdash; it compiles to "read 8 bytes starting at address
+  <code>r + 16</code>," where <code>16</code> was baked in by the compiler and the field name
+  is gone.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. Field access: fixed offsets and leaq</h2>
+<p>
+  Accessing an array field inside a struct combines two things you already know: a fixed
+  struct-field offset, and array-element addressing (Module 15's
+  <code>D(base,index,scale)</code> syntax).
+</p>
+<pre><code class="language-c">int *get_ap(struct rec *r, size_t idx) {
+  return &amp;(r-&gt;a[idx]);
+}</code></pre>
+<pre><code class="language-x86asm"># r in %rdi, idx in %rsi
+get_ap:
+  leaq  (%rdi,%rsi,4), %rax   # r + 4*idx  -- field a starts at offset 0, so no displacement needed
+  ret</code></pre>
+<p>
+  Because <code>a</code> starts at offset <code>0</code> within the struct, computing
+  <code>&amp;r-&gt;a[idx]</code> needs no separate displacement &mdash; it's exactly the
+  addressing-mode scale trick from Module 15, with <code>leaq</code> doing the address math
+  without ever dereferencing memory (which is exactly right here, since we're returning a
+  pointer, not a value).
+</p>
+<p>
+  Following the <code>next</code> pointer to walk a linked list is just repeated fixed-offset
+  loads:
+</p>
+<pre><code class="language-c">void set_val(struct rec *r, int val) {
+  while (r) {
+    long ind = r-&gt;i;
+    r-&gt;a[ind] = val;
+    r = r-&gt;next;
+  }
+}</code></pre>
+<pre><code class="language-x86asm">.L11:                            # loop:
+  movq    16(%rdi), %rax         #   ind = M[r+16]      (field i)
+  movl    %esi, (%rdi,%rax,4)    #   M[r+4*ind] = val    (field a[ind])
+  movq    24(%rdi), %rdi         #   r = M[r+24]         (field next)
+  testq   %rdi, %rdi             #   test r
+  jne     .L11                    #   if r != 0, loop</code></pre>
+<p>
+  Every field reference here &mdash; <code>16(%rdi)</code> for <code>i</code>,
+  <code>24(%rdi)</code> for <code>next</code> &mdash; is a plain displacement-addressed memory
+  operand. There's no instruction anywhere that "knows" it's touching a struct.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>3. Alignment: why fields don't always sit back-to-back</h2>
+<p>
+  If the compiler just packed every field flush against the previous one, you'd get the
+  smallest possible struct &mdash; but you'd also get fields whose addresses don't line up with
+  how memory hardware actually reads data. x86-64 (and most architectures) reads memory in
+  aligned chunks &mdash; typically 4 or 8 bytes at a time. A multi-byte value that straddles a
+  chunk boundary can cost an extra memory access to read or write, and if it straddles a virtual
+  memory page boundary, handling it gets considerably trickier. The fix is a rule: <b>a value
+  of size K bytes must start at an address that's a multiple of K.</b>
+</p>
+<table>
+  <tr><th>Type size</th><th>Examples</th><th>Alignment requirement</th></tr>
+  <tr><td>1 byte</td><td><code>char</code></td><td>none &mdash; any address</td></tr>
+  <tr><td>2 bytes</td><td><code>short</code></td><td>address's lowest bit must be 0</td></tr>
+  <tr><td>4 bytes</td><td><code>int</code>, <code>float</code></td><td>address's lowest 2 bits must be 0</td></tr>
+  <tr><td>8 bytes</td><td><code>double</code>, <code>long</code>, any pointer</td><td>address's lowest 3 bits must be 0</td></tr>
+  <tr><td>16 bytes</td><td><code>long double</code> (GCC/Linux)</td><td>address's lowest 4 bits must be 0</td></tr>
+</table>
+<p>
+  To satisfy this for every field <i>and</i> keep fields in declaration order, the compiler
+  inserts padding &mdash; unused filler bytes &mdash; wherever a field would otherwise land at a
+  misaligned offset:
+</p>
+<pre><code class="language-c">struct S1 {
+  char c;      // 1 byte,  needs no alignment
+  int i[2];    // 4-byte elements, need 4-byte alignment
+  double v;    // 8 bytes, needs 8-byte alignment
+} *p;</code></pre>
+<pre><code class="language-plaintext">offset:   0    1  2  3   4      8      12     16              24
+field:    c  [pad-3 ][    i[0]    ][    i[1]    ][       v        ]
+           1 byte     4 bytes(mult of 4)          8 bytes(mult of 8)</code></pre>
+<p>
+  <code>c</code> takes 1 byte at offset 0. <code>i</code> needs to start at a multiple of 4, so
+  3 bytes of padding get inserted before it. <code>i[0]</code> and <code>i[1]</code> then sit
+  back-to-back (offsets 4 and 8) since <code>int</code> doesn't need any gap between elements.
+  <code>v</code> needs to start at a multiple of 8, and offset 16 already is one, so no more
+  padding is needed there.
+</p>
+<p>
+  There's a second rule beyond individual field alignment: the <b>overall struct's size</b> must
+  also be a multiple of <code>K</code>, where <code>K</code> is the size of its <i>largest</i>
+  field &mdash; so that if you ever put this struct in an array, every element (not just the
+  first) stays aligned. That can force padding at the very end, even after the last field:
+</p>
+<pre><code class="language-c">struct S2 {
+  double v;    // offset 0
+  int i[2];    // offset 8
+  char c;      // offset 16
+} *p;           // total size must be a multiple of 8</code></pre>
+<pre><code class="language-plaintext">offset: 0        8         16   17                24
+field:  [   v    ][  i[0]  ][ c ][   7 bytes pad    ]</code></pre>
+<p>
+  <code>v</code>, <code>i</code>, and <code>c</code> only need 17 bytes total, but since
+  <code>K = 8</code> (from the <code>double</code>), the struct is padded out to 24 bytes.
+</p>
+<div class="callout">
+  <b>Saving space: put large fields first.</b> Since alignment padding is driven entirely by
+  field order, reordering a struct's fields (when you control the declaration) so the largest
+  types come first often eliminates padding almost entirely. <code>struct S4 { char c; int i;
+  char d; }</code> needs 12 bytes (padding before <code>i</code> and after <code>d</code>), while
+  <code>struct S5 { int i; char c; char d; }</code> &mdash; the same three fields, reordered
+  &mdash; needs only 8.
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text">struct T { short s; double d; char c; }; On x86-64, what is sizeof(struct T)?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">11 bytes</button>
+    <button class="quiz-opt" data-correct="true">24 bytes</button>
+    <button class="quiz-opt" data-correct="false">16 bytes</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>s takes offset 0-1 (2 bytes, no alignment need beyond 2-byte). d needs 8-byte alignment, so it can't start until offset 8 — 6 bytes of padding go between s and d. d occupies offset 8-15. c takes offset 16 (1 byte). That's 17 bytes of real content, but the struct's total size must be a multiple of K=8 (the largest field, the double) — so it's padded out to 24 bytes total.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>4. Arrays of structs</h2>
+<p>
+  Once you know a struct's padded size, indexing into an array of them is just multiplying that
+  size by the index &mdash; the same scale-and-offset addressing you've used throughout this
+  unit, just with a struct's size standing in for a primitive type's size:
+</p>
+<pre><code class="language-c">struct S3 {
+  short i;    // offset 0
+  float v;    // offset 4  (needs 4-byte alignment, so 2 bytes padding after i)
+  short j;    // offset 8
+} b[10];       // sizeof(struct S3) padded to 12 (multiple of 4, the largest field)
+
+short get_j(int idx) {
+  return b[idx].j;
+}</code></pre>
+<pre><code class="language-x86asm"># %rdi = idx
+  leaq    (%rdi,%rdi,2), %rax    # 3*idx  (since 12 = 4*3, this + a scale-4 access = *12)
+  movzwl  b+8(,%rax,4), %eax     # load b[idx].j: address = b + 8 + 4*(3*idx) = b + 12*idx + 8</code></pre>
+<p>
+  This is the same <code>leaq</code>-for-multiplication trick from Module 15 (12 isn't a legal
+  addressing-mode scale, so the compiler factors it into a <code>leaq</code>-computed
+  <code>3&times;idx</code> combined with a scale of <code>4</code>), landing on address
+  <code>b + 12&middot;idx + 8</code> &mdash; the start of element <code>idx</code>, plus the
+  fixed offset of field <code>j</code> within it.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">struct P { int x; int y; } pts[100]; (no padding needed — both fields are 4-byte ints, struct size is 8). What address expression gives pts[i].y?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">pts + 8*i</button>
+    <button class="quiz-opt" data-correct="true">pts + 8*i + 4</button>
+    <button class="quiz-opt" data-correct="false">pts + i + 4</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Each struct P is 8 bytes, so element i starts at pts + 8*i. Field y is the second int, at offset 4 within the struct, so pts[i].y lives at pts + 8*i + 4.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>5. Unions: all members share the same memory</h2>
+<p>
+  A <code>struct</code> gives every field its own space. A <code>union</code> does the opposite
+  on purpose: <b>every member is overlaid at the same starting address</b>, and the union is
+  only as large as its <i>largest</i> member &mdash; not the sum of all of them.
+</p>
+<pre><code class="language-c">union U1 {
+  char c;      // offset 0, 1 byte
+  int i[2];    // offset 0, 8 bytes
+  double v;    // offset 0, 8 bytes
+} *up;          // sizeof(union U1) == 8  (the size of its largest member)
+
+struct S1 {      // for contrast: the equivalent struct
+  char c;
+  int i[2];
+  double v;
+} *sp;            // sizeof(struct S1) == 24, from Section 3 above</code></pre>
+<p>
+  Where the struct version lays <code>c</code>, <code>i</code>, and <code>v</code> end-to-end
+  across 24 bytes, the union version puts <code>up-&gt;c</code>, <code>up-&gt;i</code>, and
+  <code>up-&gt;v</code> all starting at the exact same address, byte 0. Writing through one
+  member and reading through another reads back <i>whatever bit pattern is actually sitting in
+  that shared memory</i>, reinterpreted as the new member's type.
+</p>
+<p>
+  That's not usually what you want by accident &mdash; but it's exactly the tool for two
+  legitimate jobs:
+</p>
+<ul>
+  <li><b>Reinterpreting bits without a cast.</b> C won't let you treat a <code>float</code>'s
+  bits as an <code>unsigned</code> directly, but a union will:
+<pre><code class="language-c">typedef union {
+  float f;
+  unsigned u;
+} bit_float_t;
+
+float bit2float(unsigned u) {
+  bit_float_t arg;
+  arg.u = u;
+  return arg.f;   // reads back the same 4 bytes, as a float
+}</code></pre>
+  This is precisely how you'd inspect the raw sign/exponent/fraction bits of an IEEE 754 float
+  from Module 5, without the compiler trying to numerically convert the value for you.</li>
+  <li><b>Inspecting byte order.</b> A union of a <code>char[8]</code>, a <code>short[4]</code>,
+  an <code>int[2]</code>, and a <code>long[1]</code> &mdash; all sharing the same 8 bytes &mdash;
+  lets you write bytes through the <code>char</code> view and read the result through the wider
+  views, which is exactly how you'd empirically confirm x86-64 is little-endian (the least
+  significant byte lives at the lowest address) rather than taking it on faith.</li>
+</ul>
+<div class="callout warn">
+  <b>The tradeoff:</b> a union deliberately opts out of C's type safety &mdash; the compiler
+  will not stop you from writing one member and reading a different, unrelated one. Use it when
+  reinterpretation is exactly the point (bit tricks, tagged variants where only one field is
+  ever valid at a time); reach for a struct whenever fields need to coexist.
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text">union { int i; float f; } u; u.i = 0x40000000; What does u.f read back as?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">1073741824.0 (the value 0x40000000 converted to float)</button>
+    <button class="quiz-opt" data-correct="true">2.0 (the bit pattern 0x40000000 reinterpreted as an IEEE 754 float)</button>
+    <button class="quiz-opt" data-correct="false">Undefined/garbage — reading a different union member than you wrote is illegal</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>i and f share the exact same 4 bytes of memory. Writing u.i doesn't convert anything — it just stores the bit pattern 0x40000000. Reading u.f reinterprets those same bits as IEEE 754 single precision: sign 0, exponent 10000000 (=128, bias 127, so E=1), fraction all zero, giving 1.0 * 2^1 = 2.0. This is legal, well-defined behavior in C, and exactly the "reinterpret the bits" use case unions are designed for.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../17-assembly-loops-switches/lesson.html">&larr; 17. Loops &amp; Switches</a>
+  <a class="next" href="../19-assembly-control-and-data-flow/lesson.html">19. Control &amp; Data Flow &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

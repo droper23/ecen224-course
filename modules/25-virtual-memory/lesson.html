@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>25 — Virtual Memory | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="25-virtual-memory">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 25 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit5">Unit 5 &middot; Systems</span>
+    <span class="badge unit5" style="opacity:0.7">Exam: Final</span>
+  </div>
+  <h1>Virtual Memory</h1>
+  <p class="subtitle">
+    Every process on your machine behaves as if it owns the entire address space, starting at
+    address 0, with no other process in sight &mdash; even though dozens of processes are
+    really sharing the same physical RAM at once. Virtual memory is the illusion that makes
+    this work: an extra layer of address translation, invisible to the application programmer,
+    that simultaneously protects processes from each other, simplifies memory management, and
+    turns main memory into just another cache.
+  </p>
+  <div class="exam-note">
+    <b>CS:APP reference:</b> Chapter 9.1&ndash;9.5. &nbsp;|&nbsp;
+    <b>Tested on:</b> This material comes after Game 2 and is tested only on the comprehensive Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Explain the three problems virtual memory solves: efficient use of DRAM, memory management, and process isolation</li>
+  <li>Distinguish a virtual address from a physical address and describe the role of the MMU</li>
+  <li>Describe pages and page tables, and how a page table entry maps a virtual page to a physical page</li>
+  <li>Walk through address translation on a page hit and explain what happens on a page fault</li>
+  <li>Explain how virtual memory enables memory protection, memory-mapped files, and swapping</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. Why virtual memory exists</h2>
+<p>
+  Processes in a running system share the CPU and main memory with every other process on the
+  machine. Left unmanaged, that sharing creates real problems: if too many processes need too
+  much memory at once, some simply can't run; and if one process is allowed to write directly
+  into another process's memory (by accident or by malice), that other process can fail in ways
+  that have nothing to do with its own logic. Modern systems solve both problems with an
+  abstraction called <b>virtual memory (VM)</b>, and it does three distinct jobs at once:
+</p>
+<ul>
+  <li><b>Uses main memory efficiently.</b> DRAM acts as a cache for the parts of a much larger
+  virtual address space, most of which lives on disk until it's actually needed.</li>
+  <li><b>Simplifies memory management.</b> Every process gets an identical, private, linear
+  address space starting at address 0, regardless of how physical memory is actually laid out
+  or how many other processes are running.</li>
+  <li><b>Isolates address spaces.</b> A process cannot read or write memory belonging to
+  another process, and ordinary user code cannot touch privileged kernel memory at all.</li>
+</ul>
+<p>
+  All of this happens silently and automatically &mdash; the application programmer never
+  manages it directly.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. Virtual addresses vs. physical addresses</h2>
+<p>
+  In a simple embedded system, the CPU issues <b>physical addresses (PA)</b> directly, and
+  those addresses correspond one-to-one with locations in main memory. Servers, laptops, and
+  phones don't work that way. Their CPUs issue <b>virtual addresses (VA)</b>, and a piece of
+  hardware called the <b>MMU</b> (Memory Management Unit), sitting on the CPU chip, translates
+  every virtual address into a physical address before it ever reaches main memory. The
+  application only ever sees and manipulates virtual addresses; it has no idea where its data
+  actually lives in physical RAM, and it doesn't need to.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>3. Virtual memory as a cache for disk</h2>
+<p>
+  The first way to think about virtual memory is as a cache, exactly like the caches from the
+  previous module &mdash; just one level further down the hierarchy. Conceptually, a process's
+  entire virtual address space (all <code>2<sup>n</sup></code> bytes of it) is treated as if it
+  lives on disk. It's divided into fixed-size chunks called <b>pages</b> (size
+  <code>2<sup>p</sup></code>, typically 4&ndash;8 KB). Physical main memory (DRAM) holds copies
+  of a subset of those pages at any given time, playing the same role for disk that a hardware
+  cache plays for DRAM.
+</p>
+<p>Each virtual page falls into one of three states:</p>
+<ul>
+  <li><b>Unallocated</b> &mdash; not yet created by the VM system; takes up no disk space.</li>
+  <li><b>Cached</b> &mdash; allocated, and currently resident in physical memory.</li>
+  <li><b>Uncached</b> &mdash; allocated, but currently only on disk, not in physical memory.</li>
+</ul>
+<p>
+  Because the miss penalty here is enormous (DRAM is roughly 10&times; slower than the SRAM
+  caches above it, and disk is roughly 10,000&times; slower than DRAM), the design choices look
+  different from a hardware cache: pages are large (to amortize the huge cost of a disk access
+  over more data), any virtual page may be placed in any physical page slot (<b>fully
+  associative</b>, requiring a real mapping structure rather than a simple hardware
+  calculation), and replacement decisions are made by sophisticated software algorithms rather
+  than simple hardware logic.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>4. Page tables and address translation</h2>
+<p>
+  The OS tracks where every virtual page currently lives using a per-process data structure
+  called the <b>page table</b>, stored in DRAM. Each virtual page has one <b>page table entry
+  (PTE)</b> containing a valid bit and either a physical page number (if the page is cached) or
+  a disk address / "not present" marker (if it isn't).
+</p>
+<p>
+  A virtual address splits into two pieces: a <b>virtual page number (VPN)</b>, which selects a
+  PTE, and a <b>virtual page offset (VPO)</b>, which selects a byte within that page. Translation
+  conceptually works like this:
+</p>
+<ol>
+  <li>The CPU sends a virtual address to the MMU.</li>
+  <li>The MMU uses the VPN to index into the page table (a "page table walk") and fetches the
+  matching PTE.</li>
+  <li>If the PTE's valid bit is 1 (<b>page hit</b>), the MMU combines the PTE's physical page
+  number with the original page offset to form the physical address, and sends it on to the
+  cache/memory system, which returns the data.</li>
+  <li>If the valid bit is 0, the page isn't in physical memory at all &mdash; this triggers a
+  <b>page fault</b>, described below.</li>
+</ol>
+</section>
+
+<section class="lesson-section">
+<h2>5. Page faults</h2>
+<p>
+  A <b>page fault</b> is what happens on a virtual-memory "miss": the CPU references a virtual
+  page that is not currently resident in physical memory. Unlike a hardware cache miss, a page
+  fault is handled by raising an exception and letting the OS's page fault handler take over:
+</p>
+<ol>
+  <li>The MMU detects the invalid PTE and triggers a page fault exception.</li>
+  <li>The kernel's fault handler picks a <b>victim</b> page to evict from physical memory (if
+  physical memory is full), and if that victim has been modified, writes it back out to disk
+  first.</li>
+  <li>The handler reads the needed page in from disk, updates the victim's PTE to point at it,
+  and marks it valid.</li>
+  <li>The kernel resumes the original process, re-executing the instruction that faulted &mdash;
+  which now hits, because the page is in memory.</li>
+</ol>
+<p>
+  Waiting until the exact moment of the miss to bring a page in from disk, rather than loading
+  everything up front, is called <b>demand paging</b>. It means nothing is ever copied into
+  physical memory until it's actually referenced.
+</p>
+<p>
+  This scheme only performs well because of locality: at any point in time a program tends to
+  reference a fairly small set of pages, called its <b>working set</b>. If a process's working
+  set fits in physical memory, it runs fast after its initial faults; if the combined working
+  sets of every running process exceed physical memory, the system can fall into
+  <b>thrashing</b> &mdash; pages get evicted and immediately faulted back in over and over,
+  and performance collapses.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">What actually happens when the CPU references a virtual page whose valid bit is 0 in the page table?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">The CPU silently returns zero for that memory location</button>
+    <button class="quiz-opt" data-correct="true">A page fault exception is raised; the OS's handler loads the page from disk into physical memory, updates the PTE, and re-runs the faulting instruction</button>
+    <button class="quiz-opt" data-correct="false">The process is immediately terminated</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>A page fault is an exception, not a crash — the kernel's fault handler brings the missing page in from disk (evicting a victim page if needed), fixes up the page table, and lets the faulting instruction run again, this time as a hit.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>6. Memory management and protection</h2>
+<p>
+  Beyond acting as a disk cache, the indirection of a page table buys two more big wins.
+</p>
+<p>
+  <b>Simplifying memory management:</b> because every process gets its own private, identical
+  virtual address space, the OS is free to scatter a process's actual pages anywhere in
+  physical memory &mdash; contiguity in the virtual address space says nothing about contiguity
+  in physical memory. This also makes it trivial to share memory between processes (map two
+  different virtual pages, in two different processes, to the same physical page &mdash; this
+  is exactly how shared libraries avoid keeping duplicate copies of library code in RAM), and it
+  keeps linking and loading simple, since code, stack, and shared libraries can always start at
+  the same virtual addresses in every process.
+</p>
+<p>
+  <b>Memory protection:</b> each PTE can be augmented with permission bits (readable? writable?
+  requires kernel/supervisor mode?), and the hardware checks these bits on every single memory
+  access. A process that tries to write to a read-only page, or touch memory it was never
+  granted, triggers a hardware exception, and the kernel responds by sending it a
+  <code>SIGSEGV</code> ("segmentation fault") signal &mdash; the familiar crash any C programmer
+  eventually sees from a bad pointer.
+</p>
+<p>
+  This same translation layer is also what makes <b>memory-mapped files</b> possible &mdash;
+  mapping a file's contents directly into a process's virtual address space so that ordinary
+  loads and stores read and write the file, with pages faulted in from disk on demand exactly
+  like any other virtual page &mdash; and what makes <b>swapping</b> possible, where the OS
+  evicts a rarely-used process's pages out to disk entirely to free physical memory for other
+  processes, and pages them back in on demand if that process runs again.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">Two different processes map their own distinct virtual pages to the exact same physical page in DRAM. What is this used for?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">It's a bug — the OS should never let this happen</button>
+    <button class="quiz-opt" data-correct="true">Sharing code or data (like a shared library) between processes without keeping duplicate copies in physical memory</button>
+    <button class="quiz-opt" data-correct="false">It doubles the effective size of physical memory automatically</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Because address translation is per-process and fully flexible, the OS can point multiple processes' page tables at one shared physical page — the standard way read-only library code is shared across every process that uses it, without wasting RAM on redundant copies.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../24-memory-hierarchy/lesson.html">&larr; 24. Memory Hierarchy</a>
+  <a class="next" href="../26-dynamic-memory/lesson.html">26. Dynamic Memory &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

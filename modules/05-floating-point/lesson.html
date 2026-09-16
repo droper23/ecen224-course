@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>05 — Floating Point | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="06-floating-point">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 05 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit1">Unit 1 &middot; Data Representation</span>
+    <span class="badge unit1" style="opacity:0.7">Exam: Game 1</span>
+  </div>
+  <h1>Floating Point</h1>
+  <p class="subtitle">
+    Integers can't represent fractions, and fixed-point numbers force an ugly trade-off
+    between range and precision. Floating point solves this by letting the "binary point"
+    move — and IEEE 754 is the standard that makes every computer on Earth agree on exactly
+    how. This module covers the format, how to convert numbers by hand, and where it quietly
+    breaks.
+  </p>
+  <div class="exam-note">
+    <b>CS:APP reference:</b> Chapter 2.4. &nbsp;|&nbsp;
+    <b>Due:</b> HW4 &mdash; Floating Point (closes Sep 23). &nbsp;|&nbsp;
+    <b>Tested on:</b> Game 1 (Exam 1) and the comprehensive Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Explain why fixed-point representations force a range/precision trade-off</li>
+  <li>Convert a normalized IEEE 754 number between decimal and its sign/exponent/fraction bit layout, by hand</li>
+  <li>Compute the exponent bias for a given number of exponent bits, and apply it in both directions</li>
+  <li>Identify the special encodings: normalized, denormalized, infinity, and NaN</li>
+  <li>Explain why floating point addition is not associative, and why that breaks real systems</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. Why integers aren't enough</h2>
+<p>
+  Every representation you've used so far — unsigned, two's complement — encodes whole
+  numbers. Nothing stops you from imagining a binary point in the middle of a bit pattern,
+  the way <code>1011.101</code>&#8322; has 3 bits before the point and 3 after. Each position
+  right of the point is worth <code>2<sup>-1</sup></code>, <code>2<sup>-2</sup></code>,
+  <code>2<sup>-3</sup></code>, ... — mirroring how <code>0.101</code>&#8321;&#8320; is
+  <code>1/10 + 0/100 + 1/1000</code> in decimal.
+</p>
+<p>
+  That's a <b>fixed-point</b> number: you pick a spot for the binary point once, and it never
+  moves. It works, but it forces a trade:
+</p>
+<ul>
+  <li>More fractional bits &rarr; better precision, but a smaller maximum magnitude</li>
+  <li>More whole-number bits &rarr; bigger range, but coarser precision</li>
+</ul>
+<p>
+  Worse, a fixed budget of fractional bits can't represent very small numbers
+  (<code>10<sup>-100</sup></code>) or very large ones (<code>10<sup>+100</sup></code>) in the
+  same format at all. Physics, graphics, and machine learning all need both — so we need the
+  point to <i>float</i>.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">A fixed-point format uses 8 bits: 4 for the whole part, 4 for the fraction. What happens if you shift 2 bits from the fractional side to the whole side?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">Nothing changes — 8 bits is 8 bits</button>
+    <button class="quiz-opt" data-correct="true">Range increases, precision decreases</button>
+    <button class="quiz-opt" data-correct="false">Range decreases, precision increases</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Moving bits from the fraction to the whole-number side lets you represent bigger numbers (more range) but the smallest representable step between two fractional values gets coarser (less precision). This exact trade-off is what floating point is designed to avoid.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>2. The floating-point idea: mantissa &times; 2<sup>exponent</sup></h2>
+<p>
+  Scientific notation writes <code>-123.45</code> as <code>-1.2345 &times; 10<sup>2</sup></code>:
+  a sign, a <b>mantissa</b> (the significant digits), and an <b>exponent</b> that says how far
+  to shift the decimal point. Floating point does the same thing in base 2:
+</p>
+<pre><code class="language-plaintext">sign &times; mantissa &times; 2^exponent</code></pre>
+<p>
+  The mantissa controls <b>precision</b> (how many significant bits you keep); the exponent
+  controls <b>range</b> (how far the point can shift). Critically, in binary, any nonzero
+  number can always be normalized so its leading bit is exactly <code>1</code> — so that
+  leading <code>1</code> never has to be stored. It's implied "for free," which is why the
+  fraction field is one bit shorter than you'd expect.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>3. IEEE 754: the standard everyone agreed on</h2>
+<p>
+  Before 1985, every vendor's floating point behaved slightly differently — same bits, different
+  answers on different machines. <b>IEEE Standard 754</b> fixed that by defining an exact bit
+  layout and exact rounding rules that every conforming CPU must follow. Two sizes matter for
+  this course:
+</p>
+<table>
+  <tr><th></th><th>Sign</th><th>Exponent</th><th>Fraction</th><th>C type</th><th>Bias</th></tr>
+  <tr><td>Single precision</td><td>1 bit</td><td>8 bits</td><td>23 bits</td><td><code>float</code></td><td>127</td></tr>
+  <tr><td>Double precision</td><td>1 bit</td><td>11 bits</td><td>52 bits</td><td><code>double</code></td><td>1023</td></tr>
+</table>
+<p>The value a normalized encoding represents is:</p>
+<pre><code class="language-plaintext">value = (-1)^sign &times; 1.fraction &times; 2^(exp - bias)</code></pre>
+<p>
+  Three things to notice, because they're exactly what homework and exam problems test:
+</p>
+<ul>
+  <li><b>The exponent field stores a biased value, not the real exponent.</b> The stored
+  field is <code>exp = E + bias</code>. To recover the true exponent <code>E</code>, subtract
+  the bias back out. The bias itself is <code>2<sup>k-1</sup> - 1</code> where <code>k</code>
+  is the number of exponent bits — that's <code>127</code> for 8 bits, <code>1023</code> for
+  11 bits.</li>
+  <li><b>The fraction field is only the part after the implied leading 1.</b> If
+  <code>M = 1.101</code>, the fraction field stores just <code>101</code> (padded with zeros
+  to fill the field width).</li>
+  <li><b>Bigger numbers get sparser.</b> Because the exponent scales the whole mantissa, the
+  gap between two adjacent representable floats doubles every time the exponent increments.
+  Near <code>2<sup>24</sup></code>, single-precision floats can only represent every
+  <i>other</i> integer — which is why the classic C snippet below prints something surprising.</li>
+</ul>
+<pre><code class="language-c">float fp = 16777216;  // 2^24
+fp += 1;
+printf("val: %f\n", fp);
+// val: 16777216.000000  -- the +1 was silently absorbed</code></pre>
+</section>
+
+<section class="lesson-section">
+<h2>4. Worked conversion: decimal &rarr; IEEE 754</h2>
+<p>Convert <code>15213.0</code> to single-precision IEEE 754.</p>
+<ol>
+  <li><b>Convert to binary:</b> <code>15213<sub>10</sub> = 11101101101101<sub>2</sub></code></li>
+  <li><b>Normalize</b> so exactly one bit sits before the point:
+  <code>1.1101101101101<sub>2</sub> &times; 2<sup>13</sup></code></li>
+  <li><b>Fraction field</b> is everything after the implied leading 1, right-padded with
+  zeros to 23 bits: <code>11011011011010000000000</code></li>
+  <li><b>Exponent field</b>: <code>E = 13</code>, so <code>exp = E + bias = 13 + 127 = 140 =
+  10001100<sub>2</sub></code></li>
+  <li><b>Sign bit</b>: <code>0</code> (positive)</li>
+</ol>
+<pre><code class="language-plaintext">0 | 10001100 | 11011011011010000000000
+sign  exponent         fraction</code></pre>
+
+<div class="quiz">
+  <div class="quiz-q-text">A single-precision float has exponent field <code>exp = 130</code>. What is the true (unbiased) exponent E?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">130</button>
+    <button class="quiz-opt" data-correct="true">3</button>
+    <button class="quiz-opt" data-correct="false">257</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Single precision bias is 127, so E = exp - bias = 130 - 127 = 3.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>5. Special cases: zero, denormals, infinity, NaN</h2>
+<p>
+  The "normalized" rule above assumes a nonzero number with an implied leading 1 — but that
+  can't represent zero, and it leaves a gap near zero too large to be useful. IEEE 754 reserves
+  the two extreme exponent field values (all 0s and all 1s) to encode special cases instead:
+</p>
+<table>
+  <tr><th>Exponent field</th><th>Fraction field</th><th>Meaning</th></tr>
+  <tr><td>not all 0s and not all 1s</td><td>anything</td><td>Normalized: <code>(-1)<sup>s</sup> &times; 1.frac &times; 2<sup>exp-bias</sup></code></td></tr>
+  <tr><td>all 0s</td><td>anything</td><td>Denormalized: represents 0 and numbers very close to it, using <code>0.frac</code> instead of an implied 1</td></tr>
+  <tr><td>all 1s</td><td>all 0s</td><td>&plusmn;Infinity (e.g. from overflow, or <code>1.0 / 0.0</code>)</td></tr>
+  <tr><td>all 1s</td><td>nonzero</td><td>NaN &mdash; "Not a Number" (e.g. from <code>0.0 / 0.0</code> or <code>sqrt(-1)</code>)</td></tr>
+</table>
+<div class="callout">
+  <b>Why denormalized numbers exist:</b> without them, there would be a "hole" between zero and
+  the smallest normalized number — and worse, two very small numbers that are actually
+  different could subtract to exactly zero. Denormals fill that gap by giving up the implied
+  leading 1 (<code>0.frac</code> instead of <code>1.frac</code>) so numbers near zero degrade
+  gracefully instead of jumping straight to 0.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>6. Where floating point bites you</h2>
+<p>
+  Floating point cannot represent most real numbers exactly — including numbers that look
+  perfectly simple in decimal, like <code>0.1</code>. That's not a bug; it's the same reason
+  <code>1/3</code> has no exact finite decimal representation. The consequences show up in two
+  places you'll see again in this course and in real systems:
+</p>
+<ul>
+  <li><b>Floating point addition is not associative.</b> <code>(a + b) + c</code> can give a
+  different result than <code>a + (b + c)</code> once rounding is involved. This matters for
+  compilers (which can't freely reorder floating-point sums the way they reorder integer
+  sums) and for parallel/GPU code (where reduction order affects the answer).</li>
+  <li><b>Small per-operation errors accumulate.</b> The Patriot missile system tracked "time
+  since boot" in single-precision floating point, counted in 0.1-second ticks &mdash; a value
+  that floating point can't represent exactly. After 100 hours of continuous operation the
+  drift reached a third of a second, a targeting error of 687 meters. On February 25, 1991,
+  that error contributed to a Patriot battery failing to intercept a Scud missile that killed
+  28 soldiers. The fix that was already known — reboot periodically to reset the accumulated
+  error — hadn't reached that battery's crew in time.</li>
+</ul>
+<div class="callout warn">
+  <b>Rule of thumb for this course and beyond:</b> never compare floats with <code>==</code>.
+  Compare <code>fabs(a - b) &lt; epsilon</code> instead, and be deliberate about the order you
+  sum a long list of floating-point values in.
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why can floating point addition give a different result for <code>(a + b) + c</code> versus <code>a + (b + c)</code>?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">It can't — addition is always associative in IEEE 754</button>
+    <button class="quiz-opt" data-correct="true">Each addition rounds to fit the fraction field, and rounding at a different intermediate step accumulates differently</button>
+    <button class="quiz-opt" data-correct="false">The CPU processes additions in a random order</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Every intermediate floating-point result gets rounded to fit back into the fixed-width mantissa. Which pair you add first changes what gets rounded away, so the two orders can land on different final bit patterns.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../04-integer-arithmetic/lesson.html">&larr; 04. Integer Arithmetic</a>
+  <a class="next" href="../06-c-overview-and-variables/lesson.html">06. C Overview &amp; Variables &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

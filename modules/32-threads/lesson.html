@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>32 — Threads | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="32-threads">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 32 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit5">Unit 5 &middot; Systems</span>
+    <span class="badge unit5" style="opacity:0.7">Exam: Final</span>
+  </div>
+  <h1>Threads</h1>
+  <p class="subtitle">
+    Threads are the lightweight alternative to processes previewed back in module 29: multiple
+    logical flows of execution that share one process's entire address space instead of each
+    getting an isolated copy. That sharing is what makes threads fast and easy to communicate
+    between — and it's exactly what makes them dangerous. This module covers the pthreads API,
+    the race conditions shared memory invites, and mutexes as the fix.
+  </p>
+  <div class="exam-note">
+    <b>CS:APP reference:</b> Chapter 12.3, 12.5. &nbsp;|&nbsp;
+    This material comes after Game 2 and is tested only on the comprehensive Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Contrast threads and processes: what each shares and what each keeps private</li>
+  <li>Use <code>pthread_create</code>/<code>pthread_join</code> to spawn and reap a thread</li>
+  <li>Explain why shared memory between threads creates race conditions</li>
+  <li>Explain how a mutex prevents a race, and what deadlock is</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. What is a thread?</h2>
+<p>
+  A <b>thread</b> is a logical flow of execution that runs inside the context of a process.
+  Multiple threads can run concurrently within a single process, and — this is the defining
+  difference from module 30's processes — <b>all threads in a process share that process's
+  entire virtual address space</b>: the same code, the same global data, the same heap, the
+  same open file descriptors. What each thread keeps <i>private</i> is much smaller: its own
+  thread ID (TID), its own stack and stack pointer, its own program counter, its own
+  general-purpose registers and condition codes. The OS kernel schedules threads automatically,
+  the same way it schedules processes.
+</p>
+<table>
+  <tr><th></th><th>Threads</th><th>Processes</th></tr>
+  <tr><td>Address space</td><td>Shared across all threads in a process</td><td>Private to each process by default</td></tr>
+  <tr><td>Creation cost</td><td>Cheap &mdash; roughly 10&times; faster than a process</td><td>Relatively slow and heavy</td></tr>
+  <tr><td>Communication</td><td>Trivial &mdash; just read/write shared memory</td><td>Requires explicit IPC (a file, a socket, shared memory)</td></tr>
+  <tr><td>Logical structure</td><td>A flat pool of peer threads within one process</td><td>A parent/child tree hierarchy</td></tr>
+  <tr><td>Isolation / safety</td><td>None between threads &mdash; a bug in one can corrupt another's data</td><td>Strong &mdash; one process crashing doesn't corrupt another's memory</td></tr>
+</table>
+<p>
+  What threads and processes have in common: each has its own logical control flow, each can
+  run concurrently with the others (genuinely in parallel, if there are multiple cores
+  available), and each gets context-switched by the scheduler. Where they differ is exactly
+  what you'd expect from "threads share memory, processes don't": threads are cheaper to
+  create and trivially easy to communicate between, at the cost of losing the safety net of
+  isolation.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. The pthreads interface</h2>
+<p>
+  <b>Pthreads</b> (POSIX threads) is the standard C interface — around 60 functions — for
+  creating, coordinating, and tearing down threads. The two you'll use constantly:
+</p>
+<pre><code class="language-c">#include &lt;pthread.h&gt;
+
+int pthread_create(pthread_t *restrict thread,
+                    const pthread_attr_t *restrict attr,
+                    void *(*start_routine)(void *),
+                    void *restrict arg);
+
+int pthread_join(pthread_t thread, void **retval);</code></pre>
+<p>
+  <code>pthread_create</code> spawns a new thread that immediately starts running
+  <code>start_routine</code>. The <code>attr</code> argument (thread attributes) is usually
+  just <code>NULL</code> for the default behavior; <code>arg</code> is a single
+  <code>void *</code> pointer passed through to the thread's function, which is how you get
+  data <i>into</i> a thread since it doesn't take a normal argument list; the thread's
+  <code>pthread_t</code> ID is written into <code>thread</code>. <code>pthread_join</code> is
+  the thread equivalent of <code>wait()</code> from module 30 — it blocks the calling thread
+  until the target thread finishes, and can capture its return value through
+  <code>retval</code>.
+</p>
+<p>
+  A minimal pthreads program makes the shape clear:
+</p>
+<pre><code class="language-c">void *thread(void *vargp) /* thread routine */
+{
+    printf("Hello, world!\n");
+    return NULL;
+}
+
+int main()
+{
+    pthread_t tid;
+    pthread_create(&tid, NULL, thread, NULL);
+    pthread_join(tid, NULL);  // wait
+    exit(0);
+}</code></pre>
+<p>
+  <code>start_routine</code>'s signature, <code>void *(*)(void *)</code>, is a function
+  pointer — a variable that holds the address of a function rather than an address of data.
+  The general syntax for declaring one mirrors an ordinary declaration with the name wrapped
+  in parens and starred: <code>int (*add)(int, int)</code> declares a pointer to a function
+  taking two <code>int</code>s and returning an <code>int</code>, and you'd call through it as
+  <code>(*add)(5, 10)</code>. <code>pthread_create</code> uses exactly this mechanism because
+  it has to accept an arbitrary caller-defined function to run as the new thread — C doesn't
+  have a lighter-weight syntax for "pass in a callback" than a function pointer.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>3. A worked example: <code>thread2.c</code></h2>
+<p>
+  Here is the real <code>thread2.c</code> distributed for this course. It spawns one peer
+  thread to do work while the main thread does its own, separate work at the same time:
+</p>
+<pre><code class="language-c">int main() {
+    printf("******* Threading Example *******\n");
+    pthread_t thread;
+
+    if (pthread_create(&thread, NULL, do_work, NULL)) {
+        printf("An error occurred while creating thread.\n");
+        return EXIT_FAILURE;
+    }
+
+    printf("Main: Hi!\n");
+    for (int i = 0; i < 10; i++) {
+        printf("Main: Doing work... (%d)\n", i);
+        sleep(1);
+    }
+
+    pthread_exit(NULL);
+    return EXIT_SUCCESS;
+}
+
+void *do_work(void *arg) {
+    printf("Peer: Hi!\n");
+
+    for (int i = 0; i < 10; i++) {
+        printf("Peer: Doing work (%d)...\n", i);
+        sleep(1);
+    }
+    pthread_exit(NULL);
+}</code></pre>
+<p>
+  Notice there's no <code>pthread_join</code> here — instead, both the main thread and the
+  peer thread call <code>pthread_exit(NULL)</code>, which terminates <i>just the calling
+  thread</i> without ending the whole process (that's the contrast with plain <code>exit()</code>,
+  which tears down every thread in the process at once). Because <code>main</code> doesn't wait
+  for the peer, and both threads print once per second in a loop, the "Main: Doing work..."
+  and "Peer: Doing work..." lines interleave on your terminal in whatever order the scheduler
+  happens to run them — a live demonstration of concurrent, not sequential, execution.
+</p>
+<p>
+  Each thread here only touches its own local loop variable <code>i</code> — one declared
+  inside <code>main</code>'s <code>for</code>, the other inside <code>do_work</code>'s
+  <code>for</code> — so even though their <i>output</i> interleaves unpredictably, there's no
+  shared data being fought over. That's the calm case. The next section shows why it usually
+  isn't this simple.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>4. The hazard: race conditions on shared memory</h2>
+<p>
+  The moment two threads both read <i>and</i> write the <b>same</b> shared variable, you have
+  a race condition risk — this is the core hazard module 29 previewed. Suppose, instead of
+  each thread incrementing its own private loop counter the way <code>thread2.c</code> does,
+  both threads incremented one shared global counter:
+</p>
+<pre><code class="language-c">int counter = 0;  // shared by every thread
+
+void *do_work(void *arg) {
+    for (int i = 0; i < 10; i++) {
+        counter++;   // NOT safe if another thread does this too
+    }
+    return NULL;
+}</code></pre>
+<p>
+  <code>counter++</code> looks like one step, but it isn't at the machine level: the CPU has
+  to read <code>counter</code>'s current value, add one to it, then write the new value back.
+  If two threads both read the same old value before either writes its incremented result
+  back, one of the two increments is silently lost — the exact "two people spending from the
+  same shared account" race described in module 29. Which interleaving actually happens
+  depends on the scheduler, which is why race conditions are so notoriously hard to reproduce
+  and debug: the same program can produce the correct answer on one run and a subtly wrong one
+  on the next.
+</p>
+<p>
+  This is precisely the trade-off from section 1: threads share memory to make communication
+  effortless, and that same sharing is what makes uncoordinated access to shared data unsafe.
+  Local variables (each thread's own stack) are safe by construction — module 29's table noted
+  local variables are <i>not</i> shared between threads. Global variables and heap data
+  <i>are</i> shared, and that's where synchronization becomes necessary.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why doesn't <code>thread2.c</code> as written have a race condition, even though the main thread and the peer thread both run a loop at the same time?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">pthreads automatically synchronizes every variable in the program</button>
+    <button class="quiz-opt" data-correct="true">Each thread's loop variable <code>i</code> is local to that thread's own stack, so there's no shared, mutable variable for the two threads to race on</button>
+    <button class="quiz-opt" data-correct="false">Because <code>sleep(1)</code> forces the two threads to alternate one at a time</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Races require the same writable memory location to be accessed by more than one thread without coordination. thread2.c's two loop counters each live on their own thread's private stack, so nothing is actually shared here — only the interleaving of their printf output is nondeterministic, not any underlying data.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>5. Mutexes: the basic fix</h2>
+<p>
+  A <b>mutex</b> ("mutual exclusion" lock) is the standard tool for protecting shared data: it
+  lets you mark a region of code as one only a single thread may execute at a time. Any other
+  thread that tries to enter while it's locked simply blocks until the thread holding it
+  unlocks it.
+</p>
+<pre><code class="language-c">pthread_mutex_init(&mutex, NULL);
+
+pthread_mutex_lock(&mutex);
+counter++;              // now safe: only one thread can be here at a time
+pthread_mutex_unlock(&mutex);</code></pre>
+<p>
+  Wrapping the read-modify-write of <code>counter</code> between
+  <code>pthread_mutex_lock</code> and <code>pthread_mutex_unlock</code> turns the three
+  machine-level steps back into something that behaves as if it were a single atomic step from
+  every other thread's point of view — no other thread can sneak in and read a stale value
+  while the lock is held. The section of code between lock and unlock is often called a
+  <b>critical section</b>.
+</p>
+<p>
+  Mutexes solve races, but they introduce their own hazard if used carelessly:
+  <b>deadlock</b>, previewed back in module 29 as traffic gridlock. The classic version
+  happens with two mutexes: thread A locks mutex 1 and then tries to lock mutex 2, while
+  thread B has already locked mutex 2 and is trying to lock mutex 1. Neither thread can ever
+  proceed — each is waiting on a lock the other is holding, forever. The general defense is
+  discipline: always acquire multiple locks in the same, consistent order across every thread
+  that needs them.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">What does locking a mutex around <code>counter++</code> actually prevent?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">It prevents the OS from ever context-switching that thread</button>
+    <button class="quiz-opt" data-correct="true">It prevents another thread from reading or writing <code>counter</code> while the current thread is in the middle of its own read-modify-write of it</button>
+    <button class="quiz-opt" data-correct="false">It makes <code>counter++</code> execute faster</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>A mutex doesn't change how counter++ executes at the machine level (it's still read, add, write) — it changes who else is allowed to touch counter while that happens. Any other thread trying to lock the same mutex has to wait until it's unlocked, so the three-step increment is never interleaved with another thread's access to the same variable.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>You've reached the end of the syllabus</h2>
+<p>
+  Threads close out Unit 5 and the course content itself — this is the last of the 32 modules.
+  Everything from bits and IEEE 754 floats through pointers, assembly, memory, networking, and
+  now concurrency has been building toward the same systems-level fluency: knowing what's
+  actually happening underneath the code you write.
+</p>
+<p>
+  Before the comprehensive Final, work through the <b>Final Exam Master Review Deck</b> linked
+  from the course map — it pulls together material across all five units, including everything
+  in this back half of Unit 5 that's tested only on the Final. Good luck.
+</p>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../31-attack-lab/lesson.html">&larr; 31. Attack Lab</a>
+  <a class="next" href="../../index.html">Back to course map &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

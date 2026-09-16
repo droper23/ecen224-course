@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>10 — C Pointers | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="10-c-pointers">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 10 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit2">Unit 2 &middot; C Programming</span>
+    <span class="badge unit2" style="opacity:0.7">Exam: Game 1</span>
+  </div>
+  <h1>C Pointers</h1>
+  <p class="subtitle">
+    Pointers are the single most important idea in this entire course. Everything after this
+    module &mdash; the stack, the heap, function calls at the assembly level, buffer overflow
+    attacks &mdash; is really just "what a pointer is" applied in more detail. A pointer is not
+    a magic reference; it is a plain number: a memory address, stored in a variable like any
+    other. Take this module seriously.
+  </p>
+  <div class="exam-note">
+    <b>Tested on:</b> Game 1 and the Final. This is core, foundational material &mdash;
+    expect it woven into nearly every remaining unit of the course, not just tested once.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Explain what a pointer's value actually is (an address), and distinguish a pointer variable from the thing it points to</li>
+  <li>Use <code>&amp;</code> and <code>*</code> correctly, including in declarations vs. expressions</li>
+  <li>Explain why <code>arr[i]</code> and <code>*(arr + i)</code> are the same operation, including how pointer arithmetic scales by element size</li>
+  <li>Declare and reason about a pointer to a pointer</li>
+  <li>Explain why C is pass-by-value, and how passing a pointer simulates pass-by-reference</li>
+  <li>Identify NULL pointers, uninitialized (garbage) pointers, and the bugs each one causes</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. A pointer is just an address</h2>
+<p>
+  Every variable you declare has two things: a <b>value</b>, and an <b>address</b> &mdash; the
+  location in memory where that value is stored. Ordinarily you only ever think about the
+  value. A <b>pointer</b> is a variable whose value <i>is</i> an address &mdash; it "points to"
+  wherever that address is.
+</p>
+<pre><code class="language-c">uint32_t x = 0;
+uint32_t *p;      /* p is declared as a pointer to a uint32_t */
+p = &amp;x;           /* p now holds the address of x */</code></pre>
+<p>
+  Concretely, if <code>x</code> happens to live at address <code>0x100</code>, then after
+  <code>p = &amp;x;</code>, <code>p</code>'s own value is the number <code>0x100</code> &mdash;
+  stored in <code>p</code>'s own separate memory location. On a typical 32-bit architecture, an
+  address (and so a pointer's value) is itself 32 bits wide; on the 64-bit systems this course
+  otherwise focuses on, it's 64 bits. Either way: a pointer is not special magic, it is a
+  number, and it takes up real, fixed-size storage just like an <code>int</code> does.
+</p>
+<p>Two operators are the entire foundation of pointers, and they are exact opposites of each other:</p>
+<table>
+  <tr><th>Operator</th><th>Name</th><th>Does</th></tr>
+  <tr><td><code>&amp;x</code></td><td>address-of / reference</td><td>gives the address where <code>x</code> lives</td></tr>
+  <tr><td><code>*p</code></td><td>dereference / indirection</td><td>accesses (reads or writes) the value stored at the address <code>p</code> holds</td></tr>
+</table>
+<pre><code class="language-c">int x = 7;
+*(&amp;x) = 7;   /* take x's address, then dereference it — same as just writing to x directly */</code></pre>
+<p>
+  <code>&amp;</code> only applies to things that actually live somewhere in memory &mdash; a
+  variable or an array element &mdash; not to a literal constant, a register, or an arbitrary
+  expression. You can't write <code>&amp;5</code> or <code>&amp;(a + b)</code>; there's no
+  single memory address that "holds" a computed expression's result.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. Reading a pointer's value vs. what it points to</h2>
+<p>
+  It's worth walking through exactly what each line does, because this is where most of the
+  early confusion happens:
+</p>
+<pre><code class="language-c">uint32_t x = 0;
+uint32_t *p;
+p = &amp;x;       /* p := address of x, e.g. 0x100 */
+*p = 13;      /* go TO address 0x100, write 13 there — x is now 13 */
+printf("%x\n", x);    /* d  — x's own value */
+printf("%x\n", &amp;x);   /* 100 — x's address */
+printf("%x\n", p);    /* 100 — p's value (which is x's address) */
+printf("%x\n", *p);   /* d  — dereferencing p reads x's value */
+printf("%x\n", &amp;p);   /* 104 — p is a variable too, and it has its OWN address */</code></pre>
+<p>
+  That last line is the detail people miss: <code>p</code> itself lives somewhere in memory,
+  separate from <code>x</code>. <code>&amp;p</code> is the address of the pointer variable
+  <i>itself</i>, not the address it's currently holding. A pointer is a box that happens to
+  contain an address; the box itself also has an address, one level further out.
+</p>
+<div class="callout warn">
+  <b>Rule: a pointer should always point to something valid, or be <code>NULL</code>.</b>
+  A freshly declared pointer with no initializer holds garbage &mdash; whatever bit pattern was
+  already sitting in that memory, which is not a valid address for anything you own.
+  Dereferencing it is undefined behavior: it might crash immediately (a segmentation fault, if
+  you're lucky and the garbage address isn't mapped to your process), or it might silently
+  read or corrupt memory that belongs to something else entirely, which is far more dangerous
+  because nothing visibly goes wrong right away.
+  <pre><code class="language-c">uint16_t *p2;      /* uninitialized — garbage value */
+*p2 = 13;          /* undefined behavior: writing through a garbage address */</code></pre>
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text">Given <code>uint32_t x = 0; uint32_t *p = &amp;x; uint32_t **p2a = &amp;p;</code> — what does <code>**p2a</code> refer to?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">The address of p</button>
+    <button class="quiz-opt" data-correct="true">x itself — the same as writing *p</button>
+    <button class="quiz-opt" data-correct="false">The address of x</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>p2a holds the address of p (a pointer to a pointer). Dereferencing once, *p2a, gets you p's value — which is the address of x. Dereferencing again, **p2a, follows that address to get x's actual value. Each * peels back one layer of indirection.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>3. Pointer arithmetic and arrays: <code>arr[i]</code> is <code>*(arr + i)</code></h2>
+<p>
+  This is the single most important equivalence in this module, and it's not a coincidence or
+  a shorthand &mdash; it's literally how array indexing is defined in C. An array name, used in
+  an expression, <b>decays</b> into a pointer to its first element. So <code>arr[i]</code> and
+  <code>*(arr + i)</code> are not just equivalent in effect &mdash; the compiler treats them as
+  exactly the same operation.
+</p>
+<pre><code class="language-c">int a[5];
+int *pa = &amp;a[0];    /* pa points to a[0] — equivalently, pa = a; */
+int x = *pa;         /* copies a[0] into x */
+int y = a[2];         /* copies a[2] into y */
+int z = *(pa + 2);    /* also copies a[2] into z — same operation as y */</code></pre>
+<p>
+  The reason this works is that <b>pointer arithmetic is automatically scaled by the size of
+  the pointed-to type</b>. <code>pa + 2</code> does not mean "add 2 to the numeric address";
+  it means "advance 2 <i>elements</i>," which the compiler implements as adding
+  <code>2 * sizeof(*pa)</code> bytes to the address. This is exactly why a pointer's declared
+  type matters, even though its stored value is just a number in every case:
+</p>
+<table>
+  <tr><th>Pointer type</th><th><code>p + 1</code> advances the address by</th></tr>
+  <tr><td><code>char *</code></td><td>1 byte</td></tr>
+  <tr><td><code>short *</code></td><td>2 bytes</td></tr>
+  <tr><td><code>int *</code></td><td>4 bytes</td></tr>
+  <tr><td><code>double *</code></td><td>8 bytes</td></tr>
+  <tr><td><code>struct my_t *</code></td><td><code>sizeof(struct my_t)</code> bytes</td></tr>
+</table>
+<pre><code class="language-c">uint16_t A[5] = {0, 2, 4, 6, 8};
+uint16_t *p = A;      /* p points to A[0], e.g. address 0x100 */
+p++;                   /* p now points to A[1] — address 0x102, NOT 0x101 */
+p = p + 2;             /* p now points to A[3] — advanced 2 uint16_t's = 4 bytes */</code></pre>
+<p>
+  Because of this equivalence, everything valid with array subscripting is expressible with
+  pointers, and vice versa &mdash; <code>p[1]</code> works even though <code>p</code> is
+  declared as a plain pointer, not an array, because <code>p[1]</code> is defined as
+  <code>*(p + 1)</code> regardless of whether <code>p</code> started life as an array name or
+  an ordinary pointer variable.
+</p>
+<div class="callout warn">
+  <b>An array name is not a pointer variable.</b> <code>a</code> in <code>int a[5];</code> is a
+  label for a fixed block of memory, not a variable that itself holds an address you can
+  reassign. <code>a = pa;</code> and <code>a++;</code> are both illegal &mdash; there's no
+  storage location holding "a's current pointer value" the way there is for an actual pointer
+  variable like <code>pa</code>. This is subtle: <code>a</code> behaves like a pointer in most
+  expressions (it decays into one), but it is not an lvalue you can assign to.
+</div>
+<p>
+  Valid pointer arithmetic is otherwise deliberately limited: you can add or subtract an
+  integer offset, compare two pointers, or subtract one pointer from another &mdash; but only
+  when both pointers point into the <i>same</i> array. Subtracting two pointers into the same
+  array gives you the number of elements between them:
+</p>
+<pre><code class="language-c">int a[5];
+int *p = &amp;a[1];
+int *q = p + 2;        /* q points to a[3] */
+if (p &lt; q) printf("%ld\n", q - p);   /* prints 2 — element count, not byte count */</code></pre>
+
+<div class="quiz">
+  <div class="quiz-q-text">Given <code>uint16_t A[5]; uint16_t *p = A; p = p + 3;</code> — if <code>A</code> starts at address <code>0x100</code>, what address does <code>p</code> now hold?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">0x103</button>
+    <button class="quiz-opt" data-correct="true">0x106</button>
+    <button class="quiz-opt" data-correct="false">0x10C</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>uint16_t is 2 bytes. Pointer arithmetic scales by the pointed-to type's size, so p + 3 advances 3 elements = 3 &times; 2 = 6 bytes: 0x100 + 6 = 0x106. This is precisely the mechanism that makes arr[i] and *(arr + i) equivalent — the "+i" is always in units of elements, never raw bytes.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>4. Pointers and function parameters: simulating pass-by-reference</h2>
+<p>
+  C is strictly <b>pass-by-value</b>: when you call a function, every argument is
+  <i>copied</i> into the function's local parameters. The function operates on its own private
+  copies; it has no way to reach back and modify the caller's original variables &mdash; unless
+  you explicitly hand it their addresses.
+</p>
+<pre><code class="language-c">void swap(int x, int y)      /* WRONG — x and y are local copies */
+{
+  int temp = x;
+  x = y;
+  y = temp;
+}
+/* swap(a, b) has zero effect on a and b — only the copies got swapped */</code></pre>
+<p>
+  To let a function actually modify the caller's variables, pass <b>pointers</b> to them. The
+  function still receives its parameters by value &mdash; but now what's being copied is an
+  <i>address</i>, and dereferencing that address reaches the original variable, not a copy of
+  its value:
+</p>
+<pre><code class="language-c">void swap(int *px, int *py)   /* px, py are pointers — still passed by value! */
+{
+  int temp = *px;
+  *px = *py;
+  *py = temp;
+}
+swap(&amp;a, &amp;b);   /* pass addresses — this DOES swap a and b */</code></pre>
+<p>
+  It's worth being precise about what happened: <code>px</code> and <code>py</code> are still
+  local copies, exactly as pass-by-value promises &mdash; but what got copied into them was
+  <code>a</code>'s and <code>b</code>'s addresses, and an address copy still points at the
+  same original memory. This is why C is accurately described as "always pass-by-value,"
+  full stop &mdash; pointers don't violate that rule, they just make the value being passed an
+  address instead of a plain number, which is enough to simulate pass-by-reference for every
+  practical purpose.
+</p>
+<p>
+  This is also the mechanism behind returning "multiple values" from a function that can only
+  return one value directly: pass pointers to as many output variables as you need, and write
+  through them.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why does <code>void swap(int x, int y)</code> fail to swap the caller's variables, while <code>void swap(int *px, int *py)</code> succeeds?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">The first version has a syntax error</button>
+    <button class="quiz-opt" data-correct="true">Both versions pass copies into the function, but in the second version the copies are addresses, so dereferencing them reaches the caller's original variables instead of a copy of their values</button>
+    <button class="quiz-opt" data-correct="false">C automatically detects when you want pass-by-reference and switches behavior</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>C never stops being pass-by-value. In the first version, x and y are fresh copies of a and b's values, so swapping them is invisible to the caller. In the second version, px and py are still fresh copies — but copies of a and b's addresses. *px and *py dereference those addresses, reaching the original a and b directly, so the swap is visible outside the function.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>5. Pointers to structures</h2>
+<p>
+  Given a pointer to a struct, you can reach a member two equivalent ways: dereference first,
+  then use <code>.</code>, or use the combined arrow operator <code>-&gt;</code>:
+</p>
+<pre><code class="language-c">struct point { int x; int y; };
+struct point s1 = {1, 2};
+struct point *p = &amp;s1;
+
+(*p).x = 3;   /* dereference p, then access member x — parens required! */
+p->y = 4;     /* equivalent, and the conventional way to write it */
+printf("%d, %d\n", p->x, p->y);   /* 3, 4 */</code></pre>
+<p>
+  The parentheses in <code>(*p).x</code> are not optional: <code>.</code> has higher
+  precedence than unary <code>*</code>, so <code>*p.x</code> without parentheses would parse
+  as <code>*(p.x)</code> &mdash; trying to access a member <code>x</code> directly on
+  <code>p</code> (which is a pointer, not a struct, and has no such member) and then
+  dereference the result. <code>-&gt;</code> exists specifically so you never have to write
+  the awkward parenthesized form.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>6. NULL pointers and common bugs</h2>
+<p>
+  <code>NULL</code> is a special pointer value (defined as <code>0</code>, or more precisely a
+  null pointer constant, in the standard headers) that is guaranteed not to point to any valid
+  object. It's the conventional way to say "this pointer intentionally points to nothing right
+  now" &mdash; e.g. <code>fopen</code> returns <code>NULL</code> on failure (Module 7), rather
+  than a pointer to a real file.
+</p>
+<pre><code class="language-c">int *p = NULL;
+if (p != NULL) {
+  *p = 5;    /* only dereference after confirming it's non-NULL */
+}</code></pre>
+<p>
+  The three pointer bugs worth being able to recognize by sight, because they're the ones this
+  course (and real debugging) will keep confronting you with:
+</p>
+<table>
+  <tr><th>Bug</th><th>What's actually wrong</th></tr>
+  <tr><td>Uninitialized pointer</td><td>Declared but never assigned; holds garbage. Dereferencing it accesses a random address.</td></tr>
+  <tr><td>NULL dereference</td><td>Explicitly points to nothing (address 0), and something dereferences it anyway (e.g. skipping the <code>!= NULL</code> check after <code>fopen</code>/<code>malloc</code>). Typically crashes immediately and predictably, which — compared to the other two rows here — actually makes it one of the easier pointer bugs to diagnose.</td></tr>
+  <tr><td>Dangling pointer</td><td>Once pointed somewhere valid, but that memory has since been freed or gone out of scope; the pointer's bit pattern is now stale.</td></tr>
+</table>
+<div class="callout">
+  Notice the common thread: in every case, the fix is the same discipline stated back in
+  section 2 &mdash; a pointer should always be either <code>NULL</code> or pointing at
+  something currently valid, and code that dereferences a pointer should be confident which
+  of those two states it's in before doing so.
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../09-c-arrays-strings-structs/lesson.html">&larr; 09. Arrays, Strings &amp; Structs</a>
+  <a class="next" href="../11-c-flow-control-and-functions/lesson.html">11. Flow Control &amp; Functions &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

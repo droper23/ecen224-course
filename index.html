@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ECEn 224 — Course Map</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .progress-wrap { max-width: 1000px; margin: 0 auto; padding: 0 1.5rem 1rem; }
+  .progress-track { height: 8px; background: var(--bg-raised); border-radius: 999px; overflow: hidden; border: 1px solid var(--border); }
+  .progress-fill { height: 100%; width: 0%; background: var(--accent); transition: width 0.3s; }
+  #progressCounter { font-size: 0.82rem; color: var(--text-dim); margin-top: 0.4rem; }
+  .legend { display: flex; flex-wrap: wrap; gap: 0.6rem 1.2rem; font-size: 0.82rem; color: var(--text-dim); margin: 0.6rem 0 0; }
+  .legend span.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 0.4rem; }
+  footer.site-footer { max-width: 1000px; margin: 2rem auto 0; padding: 1.5rem 1.5rem 3rem; border-top: 1px solid var(--border); color: var(--text-faint); font-size: 0.85rem; }
+</style>
+</head>
+<body>
+
+<div class="course-header">
+  <div class="kicker">Fall 2026 &middot; Section 001 &middot; MWF 11:00&ndash;11:50am &middot; C215 ESC</div>
+  <h1>ECEn 224: Introduction to Computer Systems</h1>
+  <p class="subtitle">
+    An unofficial interactive study companion built from the real lecture slides for this course,
+    covering binary representation, C programming, x86-64 assembly, and systems topics (memory,
+    networking, concurrency) &mdash; organized around this section's actual exam schedule.
+    Instructors: D. J. Lee &amp; Scott Lloyd. Textbook: <i>Computer Systems: A Programmer's
+    Perspective</i>, 3rd ed. (Bryant &amp; O'Hallaron).
+  </p>
+
+  <div class="meta-grid">
+    <div class="meta-card">
+      <div class="label">Grading</div>
+      <div class="value">Quizzes 10% &middot; HW 15%</div>
+      <div class="sub">Programming 15% &middot; 2 midterms 15% each &middot; Final 30%</div>
+    </div>
+    <div class="meta-card">
+      <div class="label">Game 1 &mdash; Midterm 1</div>
+      <div class="value">Opens Oct 12 &middot; closes Oct 16</div>
+      <div class="sub">Covers Units 1&ndash;3 (Data Representation through Intro Assembly)</div>
+    </div>
+    <div class="meta-card">
+      <div class="label">Game 2 &mdash; Midterm 2</div>
+      <div class="value">Opens Nov 9 &middot; closes Nov 13</div>
+      <div class="sub">Covers Unit 4 (x86-64 Assembly &amp; Optimization)</div>
+    </div>
+    <div class="meta-card">
+      <div class="label">Final Exam</div>
+      <div class="value">Dec 12&ndash;17 &middot; Testing Center</div>
+      <div class="sub">Comprehensive &mdash; all units, weighted toward Unit 5</div>
+    </div>
+  </div>
+
+  <div class="progress-wrap" style="padding:0;">
+    <div class="progress-track"><div class="progress-fill" id="progressBarFill"></div></div>
+    <div id="progressCounter">0 / 32 modules completed</div>
+    <div class="legend">
+      <span><span class="dot" style="background:var(--unit1)"></span>Unit 1 &middot; Data Representation</span>
+      <span><span class="dot" style="background:var(--unit2)"></span>Unit 2 &middot; C Programming</span>
+      <span><span class="dot" style="background:var(--unit3)"></span>Unit 3 &middot; Debugging, Linking &amp; Intro Assembly</span>
+      <span><span class="dot" style="background:var(--unit4)"></span>Unit 4 &middot; x86-64 Assembly</span>
+      <span><span class="dot" style="background:var(--unit5)"></span>Unit 5 &middot; Systems (Final only)</span>
+    </div>
+  </div>
+</div>
+
+<div class="unit-block">
+
+  <div class="unit-title"><span class="badge unit1">Unit 1</span> Data Representation</div>
+  <div class="unit-desc">How computers store numbers. Tested on Game 1 and the Final.</div>
+  <div class="module-grid">
+    <a class="module-card" data-module-id="01-overview" href="modules/01-overview/lesson.html"><span class="check">&check;</span><div class="num">01</div><div class="title">Overview</div><div class="desc">Levels of abstraction, why this course exists, the "great realities."</div></a>
+    <a class="module-card" data-module-id="02-information-storage" href="modules/02-information-storage/lesson.html"><span class="check">&check;</span><div class="num">02</div><div class="title">Information Storage</div><div class="desc">Bits, hex, byte ordering, bitwise operators.</div></a>
+    <a class="module-card" data-module-id="03-integer-representations" href="modules/03-integer-representations/lesson.html"><span class="check">&check;</span><div class="num">03</div><div class="title">Integer Representations</div><div class="desc">Unsigned vs two's complement, sign extension, casting gotchas.</div></a>
+    <a class="module-card" data-module-id="04-integer-arithmetic" href="modules/04-integer-arithmetic/lesson.html"><span class="check">&check;</span><div class="num">04</div><div class="title">Integer Arithmetic</div><div class="desc">Overflow, wraparound, multiply/divide by shifting.</div></a>
+    <a class="module-card" data-module-id="05-floating-point" href="modules/05-floating-point/lesson.html"><span class="check">&check;</span><div class="num">05</div><div class="title">Floating Point</div><div class="desc">IEEE 754, normalized/denormalized, why float math isn't exact.</div></a>
+  </div>
+
+  <div class="unit-title"><span class="badge unit2">Unit 2</span> C Programming</div>
+  <div class="unit-desc">The language you'll be reading straight through to assembly. Tested on Game 1 and the Final.</div>
+  <div class="module-grid">
+    <a class="module-card" data-module-id="06-c-overview-and-variables" href="modules/06-c-overview-and-variables/lesson.html"><span class="check">&check;</span><div class="num">06</div><div class="title">C Overview &amp; Variables</div><div class="desc">Why C, the compile pipeline, types and scope.</div></a>
+    <a class="module-card" data-module-id="07-c-io" href="modules/07-c-io/lesson.html"><span class="check">&check;</span><div class="num">07</div><div class="title">C I/O</div><div class="desc">printf/scanf, format specifiers, common mistakes.</div></a>
+    <a class="module-card" data-module-id="08-c-operators" href="modules/08-c-operators/lesson.html"><span class="check">&check;</span><div class="num">08</div><div class="title">C Operators</div><div class="desc">Precedence, pre/post increment, short-circuit evaluation.</div></a>
+    <a class="module-card" data-module-id="09-c-arrays-strings-structs" href="modules/09-c-arrays-strings-structs/lesson.html"><span class="check">&check;</span><div class="num">09</div><div class="title">Arrays, Strings &amp; Structs</div><div class="desc">Contiguous memory, null-terminated strings, struct layout.</div></a>
+    <a class="module-card" data-module-id="10-c-pointers" href="modules/10-c-pointers/lesson.html"><span class="check">&check;</span><div class="num">10</div><div class="title">C Pointers</div><div class="desc">Addresses, pointer arithmetic, pass-by-reference.</div></a>
+    <a class="module-card" data-module-id="11-c-flow-control-and-functions" href="modules/11-c-flow-control-and-functions/lesson.html"><span class="check">&check;</span><div class="num">11</div><div class="title">Flow Control &amp; Functions</div><div class="desc">Loops, switch, recursion, the stack-frame intuition.</div></a>
+  </div>
+
+  <div class="unit-title"><span class="badge unit3">Unit 3</span> Under the Hood</div>
+  <div class="unit-desc">Debugging, linking, and your first look at assembly. The last stretch before Game 1. Tested on Game 1 and the Final.</div>
+  <div class="module-grid">
+    <a class="module-card" data-module-id="12-debugging" href="modules/12-debugging/lesson.html"><span class="check">&check;</span><div class="num">12</div><div class="title">Debugging</div><div class="desc">gdb basics, common bug classes, reading compiler warnings.</div></a>
+    <a class="module-card" data-module-id="13-linking" href="modules/13-linking/lesson.html"><span class="check">&check;</span><div class="num">13</div><div class="title">Linking</div><div class="desc">Object files, symbols, static vs dynamic linking.</div></a>
+    <a class="module-card" data-module-id="14-assembly-introduction" href="modules/14-assembly-introduction/lesson.html"><span class="check">&check;</span><div class="num">14</div><div class="title">Assembly Introduction</div><div class="desc">Registers, AT&amp;T syntax, reading objdump output.</div></a>
+  </div>
+
+  <div class="unit-title"><span class="badge unit4">Unit 4</span> x86-64 Assembly</div>
+  <div class="unit-desc">The machine's-eye view of everything from Units 2&ndash;3. Tested on Game 2 and the Final.</div>
+  <div class="module-grid">
+    <a class="module-card" data-module-id="15-assembly-move-and-address" href="modules/15-assembly-move-and-address/lesson.html"><span class="check">&check;</span><div class="num">15</div><div class="title">Move &amp; Address</div><div class="desc">movq family, addressing modes, leaq.</div></a>
+    <a class="module-card" data-module-id="16-assembly-arith-jump-cond" href="modules/16-assembly-arith-jump-cond/lesson.html"><span class="check">&check;</span><div class="num">16</div><div class="title">Arithmetic, Jumps &amp; Conditionals</div><div class="desc">Condition codes, cmp/test, jCC family.</div></a>
+    <a class="module-card" data-module-id="17-assembly-loops-switches" href="modules/17-assembly-loops-switches/lesson.html"><span class="check">&check;</span><div class="num">17</div><div class="title">Loops &amp; Switches</div><div class="desc">Recognizing loops in disassembly, jump tables.</div></a>
+    <a class="module-card" data-module-id="18-assembly-structs-unions" href="modules/18-assembly-structs-unions/lesson.html"><span class="check">&check;</span><div class="num">18</div><div class="title">Structs &amp; Unions</div><div class="desc">Fixed-offset field access, alignment/padding.</div></a>
+    <a class="module-card" data-module-id="19-assembly-control-and-data-flow" href="modules/19-assembly-control-and-data-flow/lesson.html"><span class="check">&check;</span><div class="num">19</div><div class="title">Control &amp; Data Flow</div><div class="desc">call/ret, argument-passing registers, stack frames.</div></a>
+    <a class="module-card" data-module-id="20-assembly-memory" href="modules/20-assembly-memory/lesson.html"><span class="check">&check;</span><div class="num">20</div><div class="title">Memory Management</div><div class="desc">Process memory layout: stack, heap, data, text.</div></a>
+    <a class="module-card" data-module-id="21-assembly-buffer-overflow" href="modules/21-assembly-buffer-overflow/lesson.html"><span class="check">&check;</span><div class="num">21</div><div class="title">Buffer Overflow</div><div class="desc">Stack smashing and how mitigations defend against it.</div></a>
+    <a class="module-card" data-module-id="22-binary-bomb-lab" href="modules/22-binary-bomb-lab/lesson.html"><span class="check">&check;</span><div class="num">22</div><div class="title">Binary Bomb Lab</div><div class="desc">Strategy primer for the reverse-engineering assignment.</div></a>
+    <a class="module-card" data-module-id="23-optimization" href="modules/23-optimization/lesson.html"><span class="check">&check;</span><div class="num">23</div><div class="title">Optimization</div><div class="desc">-O levels, loop unrolling, why -O0 reads more literally.</div></a>
+  </div>
+
+  <div class="unit-title"><span class="badge unit5">Unit 5</span> Systems</div>
+  <div class="unit-desc">Memory, networking, and concurrency. Taught after Game 2 &mdash; tested only on the comprehensive Final.</div>
+  <div class="module-grid">
+    <a class="module-card" data-module-id="24-memory-hierarchy" href="modules/24-memory-hierarchy/lesson.html"><span class="check">&check;</span><div class="num">24</div><div class="title">The Memory Hierarchy</div><div class="desc">Locality, caches, why traversal order matters.</div></a>
+    <a class="module-card" data-module-id="25-virtual-memory" href="modules/25-virtual-memory/lesson.html"><span class="check">&check;</span><div class="num">25</div><div class="title">Virtual Memory</div><div class="desc">Pages, page tables, page faults, isolation.</div></a>
+    <a class="module-card" data-module-id="26-dynamic-memory" href="modules/26-dynamic-memory/lesson.html"><span class="check">&check;</span><div class="num">26</div><div class="title">Dynamic Memory Allocation</div><div class="desc">malloc/free, leaks, use-after-free, double-free.</div></a>
+    <a class="module-card" data-module-id="27-computer-networks" href="modules/27-computer-networks/lesson.html"><span class="check">&check;</span><div class="num">27</div><div class="title">Computer Networks</div><div class="desc">Client-server model, IP/ports, TCP vs UDP.</div></a>
+    <a class="module-card" data-module-id="28-socket-programming" href="modules/28-socket-programming/lesson.html"><span class="check">&check;</span><div class="num">28</div><div class="title">Socket Programming</div><div class="desc">socket/bind/listen/accept, with real client.c/server.c.</div></a>
+    <a class="module-card" data-module-id="29-concurrency" href="modules/29-concurrency/lesson.html"><span class="check">&check;</span><div class="num">29</div><div class="title">Concurrency</div><div class="desc">Processes vs threads vs event-driven, race conditions.</div></a>
+    <a class="module-card" data-module-id="30-processes" href="modules/30-processes/lesson.html"><span class="check">&check;</span><div class="num">30</div><div class="title">Processes</div><div class="desc">fork(), wait(), exec(), with real example code.</div></a>
+    <a class="module-card" data-module-id="31-attack-lab" href="modules/31-attack-lab/lesson.html"><span class="check">&check;</span><div class="num">31</div><div class="title">Attack Lab</div><div class="desc">Strategy primer connecting back to Buffer Overflow.</div></a>
+    <a class="module-card" data-module-id="32-threads" href="modules/32-threads/lesson.html"><span class="check">&check;</span><div class="num">32</div><div class="title">Threads</div><div class="desc">pthread_create/join, shared memory, mutexes.</div></a>
+  </div>
+
+</div>
+
+<footer class="site-footer">
+  <p>
+    Unofficial study companion for EC EN 224 (Fall 2026, Section 001), generated from this
+    section's own posted lecture slides. Not affiliated with or endorsed by BYU. Always defer
+    to the official <a href="https://learningsuite.byu.edu" target="_blank" rel="noopener">LearningSuite</a>
+    page for the current syllabus, due dates, and any updates from the instructors.
+  </p>
+  <p>Your progress is tracked locally in this browser only (nothing is uploaded anywhere).</p>
+</footer>
+
+<script src="assets/progress.js"></script>
+</body>
+</html>

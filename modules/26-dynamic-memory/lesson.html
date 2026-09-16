@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>26 — Dynamic Memory Allocation | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="26-dynamic-memory">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 26 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit5">Unit 5 &middot; Systems</span>
+    <span class="badge unit5" style="opacity:0.7">Exam: Final</span>
+  </div>
+  <h1>Dynamic Memory Allocation</h1>
+  <p class="subtitle">
+    A local variable disappears the moment its function returns, and a global's size is fixed
+    at compile time. Neither works for a data structure whose size you don't know until the
+    program is running. <code>malloc</code> and <code>free</code> let you carve out and give
+    back memory on demand, from a region called the heap &mdash; but unlike everything else
+    you've allocated so far, the heap comes with no automatic cleanup and no safety net.
+  </p>
+  <div class="exam-note">
+    <b>CS:APP reference:</b> Chapter 9.9. &nbsp;|&nbsp;
+    <b>Tested on:</b> This material comes after Game 2 and is tested only on the comprehensive Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Explain what malloc, free, calloc, and realloc actually do</li>
+  <li>Describe the heap as a region of a process's virtual address space, managed by the allocator</li>
+  <li>Identify memory leaks, double-frees, use-after-free, and heap buffer overflows in code</li>
+  <li>Explain why every successful malloc must be matched by exactly one free</li>
+  <li>Describe, at a conceptual level, how an allocator might track which blocks of the heap are free</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. Why dynamic allocation exists</h2>
+<p>
+  Programmers use dynamic memory allocators &mdash; <code>malloc</code> in C &mdash; to acquire
+  memory at run time, for exactly the case static and automatic storage can't handle: a data
+  structure whose size isn't known until the program is running (a linked list that grows, an
+  array sized by user input, a buffer sized by a file's actual length). The allocator manages a
+  region of the process's virtual address space called the <b>heap</b>, which sits above the
+  program's static data segments and grows upward as more space is requested.
+</p>
+<p>
+  Allocators come in two flavors. An <b>explicit allocator</b> requires the application to
+  request space and to give it back itself &mdash; this is <code>malloc</code>/<code>free</code>
+  in C. An <b>implicit allocator</b> lets the application request space but never requires it to
+  free anything explicitly; the system figures out on its own when memory is no longer
+  reachable and reclaims it automatically. This is <b>garbage collection</b>, used by languages
+  like Python, Java, and Lisp. C gives you none of that safety net &mdash; the allocator only
+  ever gives memory back when you call <code>free</code> yourself.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. The malloc package</h2>
+<pre><code class="language-c">#include &lt;stdlib.h&gt;
+
+void *malloc(size_t size);
+void  free(void *p);
+void *calloc(size_t nmemb, size_t size);
+void *realloc(void *p, size_t size);</code></pre>
+<ul>
+  <li><b><code>malloc(size)</code></b> returns a pointer to a new block of at least
+  <code>size</code> bytes, aligned to a 16-byte boundary on x86-64. The contents are
+  <i>uninitialized</i> &mdash; garbage left over from whatever used that memory before. If
+  <code>size == 0</code>, it returns <code>NULL</code>. On failure, it also returns
+  <code>NULL</code> and sets <code>errno</code> &mdash; a return value every call must be
+  checked for.</li>
+  <li><b><code>free(p)</code></b> returns the block pointed to by <code>p</code> back to the
+  heap, making that space available for future allocations. <code>p</code> must be a pointer
+  that came directly from a previous <code>malloc</code>/<code>calloc</code>/<code>realloc</code>
+  call &mdash; not the middle of a block, and not an already-freed pointer.</li>
+  <li><b><code>calloc(nmemb, size)</code></b> allocates space for <code>nmemb</code> elements
+  of <code>size</code> bytes each and, unlike <code>malloc</code>, zero-initializes the entire
+  block before returning it.</li>
+  <li><b><code>realloc(p, size)</code></b> resizes a previously allocated block to
+  <code>size</code> bytes, preserving its existing contents (truncated if shrinking). It may
+  return the same pointer, or it may allocate a new block elsewhere and copy the old contents
+  over, freeing the original &mdash; you must always use <code>realloc</code>'s return value,
+  never assume <code>p</code> is still valid.</li>
+</ul>
+<pre><code class="language-c">void foo(int n) {
+    int i, *p;
+
+    /* Allocate a block of n ints */
+    p = (int *) malloc(n * sizeof(int));
+    if (p == NULL) {
+        perror("malloc");
+        exit(0);
+    }
+
+    /* Initialize allocated block */
+    for (i = 0; i < n; i++)
+        p[i] = i;
+
+    /* ... use p ... */
+
+    /* Return p to the heap */
+    free((void *) p);
+}</code></pre>
+<p>
+  Internally, the allocator maintains the heap as a collection of variable-sized blocks, each
+  either allocated (in use by the application) or free (available to satisfy a future request).
+  Every call to <code>malloc</code> must respond immediately with some free block large enough
+  to satisfy it &mdash; it can't buffer or reorder requests, can't move blocks once they're
+  handed out (no compaction), and can only use heap memory itself to track its own bookkeeping.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>3. How an allocator tracks free space (conceptually)</h2>
+<p>
+  A useful mental model: the allocator keeps some kind of <b>free list</b> &mdash; a record of
+  which regions of the heap are currently unused and how large each one is. When a
+  <code>malloc</code> request comes in, the allocator searches that free list for a block big
+  enough, splits off just the amount needed (keeping the leftover as a smaller free block), and
+  hands back a pointer to the usable portion. When <code>free</code> is called, the allocator
+  marks that block free again and, ideally, merges ("coalesces") it with any free blocks
+  immediately next to it, so the heap doesn't fragment into many small, unusable gaps.
+</p>
+<p>
+  There are different levels of sophistication for organizing this bookkeeping. An
+  <b>implicit free list</b> embeds a small header in every block (allocated or free) recording
+  its size and status, so the allocator can walk the whole heap block by block to find free
+  space &mdash; simple, but slow to search. An <b>explicit free list</b> instead links only the
+  free blocks together directly (storing "next free block" pointers inside the free blocks
+  themselves), so the allocator only ever has to scan free space, not allocated space, making
+  searches much faster. You don't need to implement either for this course &mdash; just
+  understand that "the allocator knows what's free" requires the allocator to actively track
+  it using some structure like this, stored inside the heap itself.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>4. Why you must free everything you malloc</h2>
+<p>
+  Because C's allocator is explicit, nothing gets reclaimed automatically. Every block your
+  program <code>malloc</code>s stays reserved &mdash; unusable by anything else &mdash; until
+  your program explicitly <code>free</code>s it or exits. A program that keeps allocating
+  without ever freeing what it no longer needs consumes more and more memory over its lifetime,
+  which for a long-running program (a server, a daemon) can eventually exhaust available memory
+  entirely.
+</p>
+<div class="callout warn">
+  <b>The four classic heap bugs:</b>
+  <ul>
+    <li><b>Memory leak:</b> losing the last pointer to an allocated block without freeing it
+    first. The block becomes permanently unreachable and unreleasable &mdash; the block in
+    <code>foo()</code> below is a leak the moment the function returns.</li>
+    <li><b>Double free:</b> calling <code>free</code> twice on the same pointer. The second call
+    corrupts the allocator's internal bookkeeping, because that memory may already have been
+    handed back out to a different <code>malloc</code> call.</li>
+    <li><b>Use-after-free:</b> reading or writing through a pointer after the block it points to
+    has been freed. The memory may already belong to something else, so this silently corrupts
+    unrelated data.</li>
+    <li><b>Buffer overflow into heap metadata:</b> writing past the end of an allocated block
+    (e.g. writing <code>n+1</code> elements into an <code>n</code>-element array) can corrupt
+    the allocator's own header for the next block, causing crashes or corruption far away from
+    the actual bug.</li>
+  </ul>
+</div>
+<pre><code class="language-c">void foo(void) {
+    int *p = malloc(128);
+    return;   /* p's block is now garbage: no pointer to it remains, and it was never freed */
+}</code></pre>
+
+<div class="quiz">
+  <div class="quiz-q-text">A function calls <code>malloc</code>, stores the result in a local pointer, does some work, and returns without ever calling <code>free</code> on that pointer. What's the bug?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">Double free</button>
+    <button class="quiz-opt" data-correct="true">Memory leak — the allocated block becomes unreachable once the local pointer goes out of scope, and can never be freed</button>
+    <button class="quiz-opt" data-correct="false">Use-after-free</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Once the function returns, the only pointer to that block is gone, but the block itself is still marked allocated in the heap. It's now permanently unusable "garbage" — exactly the kind of leak that garbage-collected languages clean up automatically and C does not.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>5. Garbage collection: the implicit alternative</h2>
+<p>
+  Languages like Python, Java, and Lisp use <b>garbage collection</b>: the runtime automatically
+  reclaims heap blocks once it determines nothing can reach them anymore, without the programmer
+  ever calling anything like <code>free</code>. The classic approach, <b>mark-and-sweep</b>,
+  treats memory as a directed graph: every heap block is a node, every pointer is an edge, and
+  <b>root nodes</b> are the pointers living outside the heap &mdash; in registers, on the stack,
+  or in global variables. A block is <b>reachable</b> if there's a path of pointers from some
+  root to it; anything unreachable is garbage. The collector periodically walks from the roots,
+  marking every block it can reach, then sweeps through the whole heap freeing every unmarked
+  block.
+</p>
+<p>
+  This requires the collector to be able to reliably tell pointers apart from ordinary data
+  (and for pointers to always point to the start of a block) &mdash; which is straightforward
+  in a managed language but hard to guarantee in C, where a pointer can be cast to an integer
+  and back. "Conservative" garbage collectors exist for C and C++, but in general they can't
+  collect everything with certainty, which is part of why C code is expected to manage the heap
+  explicitly instead.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">In mark-and-sweep garbage collection, what makes a heap block eligible to be freed?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">It hasn't been written to in the last few seconds</button>
+    <button class="quiz-opt" data-correct="true">There is no path of pointers from any root node (registers, stack, or globals) that reaches it</button>
+    <button class="quiz-opt" data-correct="false">The programmer marked it with a special comment</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Mark-and-sweep treats the heap as a graph reachable from a set of roots outside the heap. Anything the mark phase can't reach by following pointers is, by definition, garbage the program can never use again — so the sweep phase reclaims it.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../25-virtual-memory/lesson.html">&larr; 25. Virtual Memory</a>
+  <a class="next" href="../27-computer-networks/lesson.html">27. Computer Networks &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

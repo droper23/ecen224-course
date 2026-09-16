@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>31 — Attack Lab | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="31-attack-lab">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 31 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit5">Unit 5 &middot; Systems</span>
+    <span class="badge unit5" style="opacity:0.7">Hands-on Lab</span>
+  </div>
+  <h1>Attack Lab</h1>
+  <p class="subtitle">
+    The Attack Lab is the hands-on flip side of module 21's buffer-overflow lecture: instead of
+    reading about a stack-smashing vulnerability, you exploit one yourself, against a binary
+    that's uniquely randomized for you. This module isn't a lecture summary — it's a strategy
+    primer on the workflow, the tools, and the concepts you'll actually need at the terminal.
+  </p>
+  <div class="exam-note">
+    This is a hands-on programming assignment, not a lecture &mdash; but it directly exercises
+    the buffer-overflow concepts from module 21, which ARE tested on the Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Explain what the Attack Lab is and why it exists as a hands-on complement to module 21</li>
+  <li>Describe the general workflow for finding and exploiting a stack buffer overflow</li>
+  <li>Identify the purpose of each tool involved: <code>objdump</code>, <code>gdb</code>, and a hex-encoding helper</li>
+  <li>Explain why this skill is taught for defensive understanding, not for attacking real systems</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. What this assignment is, and why it exists</h2>
+<p>
+  Module 21 taught you, in the abstract, that writing past the end of a fixed-size stack
+  buffer can corrupt the data sitting above it in memory — including the saved return
+  address that tells a function where to resume execution when it returns. That's a
+  striking claim. The Attack Lab is BYU's way of making you prove it to yourself: you're
+  handed a small, uniquely-randomized vulnerable binary, and your job is to craft an input
+  string that doesn't just crash it, but <i>controls</i> it — redirects its execution to code
+  of your choosing.
+</p>
+<p>
+  The assignment is organized as five independent exploit phases, each pushing the technique
+  further:
+</p>
+<table>
+  <tr><th>Phase</th><th>Technique</th></tr>
+  <tr><td>1</td><td>Redirect the return address to an existing function</td></tr>
+  <tr><td>2</td><td>Inject new code into the stack and jump to it</td></tr>
+  <tr><td>3</td><td>Inject new code <i>and</i> new data</td></tr>
+  <tr><td>4</td><td>"Gadget farm" &mdash; chain together small existing instruction sequences (a return-oriented-programming style attack, useful when the stack itself can't be executed)</td></tr>
+  <tr><td>5</td><td>Extra credit, combining ideas from the earlier phases</td></tr>
+</table>
+<p>
+  You don't have to repeat an earlier phase's exploit to attempt a later one — each phase is
+  independent — but working through them in order is strongly recommended, since each builds
+  directly on the disassembly and offset-finding skills from the one before it. There's no
+  penalty for failing to exploit a given phase, and successful exploits are reported to a
+  class leaderboard.
+</p>
+<p>
+  Every student's target binary is randomized, so <b>there is no single "correct answer" to
+  memorize</b> — the specific offset, the specific address, the specific bytes you need all
+  differ from student to student and must be discovered by inspecting your own target with
+  the tools below. This module deliberately stays at the strategy level for that reason: what
+  to look for and why, not what any particular address happens to be.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. The general workflow</h2>
+<p>
+  Every phase of this lab follows roughly the same sequence of steps, regardless of which
+  exploit technique it calls for:
+</p>
+<ol>
+  <li>
+    <b>Disassemble the vulnerable function.</b> Find the specific function in your target
+    that reads unbounded input into a fixed-size stack buffer — that's the vulnerability
+    module 21 warned about. Read its disassembly to understand exactly how it sets up its
+    stack frame.
+  </li>
+  <li>
+    <b>Find the buffer's offset to the saved return address.</b> The whole exploit hinges on
+    knowing exactly how many bytes separate the start of the buffer you're writing into from
+    the saved return address sitting higher up the stack. Get this number wrong by even one
+    byte and you'll corrupt the wrong data instead of gaining control. You work this out from
+    the stack frame layout you saw in the disassembly — how much space the compiler reserved
+    for the buffer, plus any other saved state between it and the return address.
+  </li>
+  <li>
+    <b>Decide what needs to be overwritten, and with what.</b> Every phase comes down to the
+    same question: which bytes at that offset do I need to replace, and with what value? For
+    a simple redirect, it's just a new return address. For code injection, it's a return
+    address <i>plus</i> a sequence of machine instructions placed somewhere the CPU will
+    execute. For a gadget farm, it's a chain of addresses, each pointing at a short existing
+    instruction sequence ("gadget") that does one small useful thing and then returns into
+    the next gadget.
+  </li>
+  <li>
+    <b>Encode and deliver the exploit string.</b> Once you know the byte sequence you need,
+    you turn it into the actual raw bytes the vulnerable input-reading function will consume.
+  </li>
+</ol>
+<div class="callout">
+  <b>The one idea underlying all five phases:</b> a stack buffer overflow lets you write
+  attacker-controlled bytes into memory the program didn't intend for you to control — and if
+  that memory includes a saved return address (or, in later phases, other data the control
+  flow depends on), you've turned "I can write past the end of an array" into "I can make the
+  CPU execute what I want."
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why does finding the exact offset from the buffer to the saved return address matter so much?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">It doesn't — any offset works as long as the input is long enough</button>
+    <button class="quiz-opt" data-correct="true">Writing too few bytes leaves the return address unchanged, and writing the wrong bytes at the wrong position corrupts unrelated stack data instead of controlling execution</button>
+    <button class="quiz-opt" data-correct="false">The offset only matters for phase 4's gadget farm, not the earlier phases</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>The exploit works by placing specific bytes at a specific stack location. If your offset is off by even a little, you'll either fail to reach the return address at all, or overwrite the wrong bytes and most likely just crash the program instead of redirecting it.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>3. Your tools</h2>
+<table>
+  <tr><th>Tool</th><th>Role in the workflow</th></tr>
+  <tr><td><code>objdump</code></td><td>Disassembles the target binary into readable x86-64 assembly so you can study the vulnerable function's stack frame layout. A typical first step is dumping the whole binary to a file you can search through: <code>objdump -d target &gt; target.txt</code>.</td></tr>
+  <tr><td><code>gdb</code></td><td>Lets you actually run the target under a debugger, set breakpoints inside the vulnerable function, and inspect the stack and registers live — invaluable for confirming the offset you worked out from the disassembly is actually correct before you commit to an exploit string.</td></tr>
+  <tr><td>a hex-encoding helper (<code>hex2raw</code>)</td><td>Converts a human-readable hex string you construct (the bytes of your exploit) into the actual raw byte string the target program reads as input.</td></tr>
+  <tr><td><code>gcc</code></td><td>Available for compiling and assembling, useful if you want to test ideas about instruction encoding locally before targeting the real binary.</td></tr>
+</table>
+<p>
+  One detail worth flagging because it explains a strange step in the setup instructions:
+  modern Linux distributions ship stack-protection mitigations on by default that would block
+  this exact class of exploit. That's precisely why the assignment can't be done on a typical
+  up-to-date lab machine — you SSH into a dedicated course server configured without those
+  protections, so the underlying vulnerability is actually exploitable the way it would have
+  been on an unprotected system. Your target binary also ships with debug information turned
+  on, so both <code>gdb</code> and <code>objdump</code> can show you function and variable
+  names directly rather than raw addresses only.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>4. Why this is worth learning</h2>
+<p>
+  It's worth being explicit about the purpose here: this lab exists to teach you to
+  <b>recognize and defend against</b> buffer-overflow vulnerabilities, not to attack systems
+  you don't own or have permission to test. The reason working exploit code is such an
+  effective teacher is that it removes all ambiguity — a program either got hijacked by your
+  crafted input or it didn't. Once you've personally walked a return address through a stack
+  overflow, the defensive advice from module 21 (bounds-check every buffer write, prefer
+  length-limited functions, treat stack-protection mechanisms like canaries as real
+  mitigations rather than boilerplate) stops being abstract advice and becomes something
+  you've seen the necessity of firsthand.
+</p>
+<div class="callout warn">
+  <b>Scope reminder:</b> everything in this lab targets a binary specifically built and
+  distributed for this purpose, running on a server set up for it. The techniques generalize,
+  but using them against systems you don't own or don't have explicit authorization to test
+  is illegal, independent of how the skill was acquired.
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why does the Attack Lab have to run on a special course server (via SSH) instead of a normal up-to-date lab machine?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">Lab machines don't have <code>gdb</code> or <code>objdump</code> installed</button>
+    <button class="quiz-opt" data-correct="true">Modern Linux distros ship stack-protection mitigations by default that would block this class of exploit, so the course server is configured without them</button>
+    <button class="quiz-opt" data-correct="false">The exploit requires more CPU cores than a lab machine has</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Current Linux distributions enable stack-protection defenses by default specifically to stop attacks like the ones this lab teaches. To let you actually exploit the vulnerability the way module 21 described it, the assignment runs on a server (ssh.et.byu.edu) set up without those protections.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../30-processes/lesson.html">&larr; 30. Processes</a>
+  <a class="next" href="../32-threads/lesson.html">32. Threads &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

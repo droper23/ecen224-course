@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>04 — Integer Arithmetic | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="04-integer-arithmetic">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 04 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit1">Unit 1 &middot; Data Representation</span>
+    <span class="badge unit1" style="opacity:0.7">Exam: Game 1</span>
+  </div>
+  <h1>Integer Arithmetic</h1>
+  <p class="subtitle">
+    Fixed-width integers can't hold every possible result of adding or multiplying two
+    numbers together. This module covers exactly what happens when they don't fit &mdash;
+    wraparound for unsigned, undefined behavior for signed &mdash; plus the shift-based
+    tricks compilers use to turn multiplication and division by powers of two into fast
+    instructions.
+  </p>
+  <div class="exam-note">
+    <b>CS:APP reference:</b> Chapter 2.3. &nbsp;|&nbsp;
+    <b>Due:</b> HW3 &mdash; Integer Arithmetic (closed Sep 21). &nbsp;|&nbsp;
+    <b>Tested on:</b> Game 1 and the Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Predict the result of unsigned addition overflow (wraparound) for a given word size</li>
+  <li>Predict two's-complement signed addition overflow, including positive and negative overflow</li>
+  <li>Explain why signed overflow is undefined behavior in C, despite wrapping predictably on real two's-complement hardware</li>
+  <li>Convert multiplication and division by powers of 2 into shift operations, and reason about rounding direction</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. Unsigned addition: wraparound</h2>
+<p>
+  A <code>w</code>-bit register can only hold <code>w</code> bits. If you add two
+  <code>w</code>-bit unsigned numbers, the mathematically correct ("true") sum can need
+  up to <code>w+1</code> bits to represent &mdash; for example, with 4 bits,
+  <code>15 + 15 = 30</code>, but the maximum 4-bit value is only <code>15</code>. The
+  hardware doesn't grow an extra bit; it simply drops any carry out of the top bit and
+  keeps only the low <code>w</code> bits. That's <b>unsigned overflow</b>, and the result
+  is exactly the true sum <b>modulo <code>2<sup>w</sup></code></b>:
+</p>
+<pre><code class="language-plaintext">4-bit unsigned: range is 0000 to 1111 (0 to 15)
+15 +  1 = 1111 + 0001 = 1 0000  -> drop carry -> 0000  (0, not 16)
+15 + 15 = 1111 + 1111 = 1 1110  -> drop carry -> 1110  (14, not 30)</code></pre>
+<p>
+  Overflow only ever wraps around <i>at most once</i> for a single addition, since adding
+  two <code>w</code>-bit numbers can never produce a true sum &ge; <code>2<sup>w+1</sup></code>.
+  Unsigned overflow is not a bug or an error condition in C &mdash; it's fully defined,
+  predictable modular arithmetic, and some algorithms (hash functions, checksums,
+  cryptography) rely on it deliberately.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. Two's-complement (signed) addition: overflow both directions</h2>
+<p>
+  Signed addition works the same way at the bit level &mdash; compute the true sum (which
+  may need <code>w+1</code> bits), then keep only the low <code>w</code> bits and
+  reinterpret them as two's complement. But because the representable signed range is
+  <code>[-2<sup>w-1</sup>, 2<sup>w-1</sup>-1]</code>, overflow can now happen in
+  <i>either</i> direction:
+</p>
+<ul>
+  <li><b>Positive overflow:</b> adding two positive numbers produces a true sum
+  &ge; <code>2<sup>w-1</sup></code> that doesn't fit, so the truncated result wraps around
+  into the negative range.</li>
+  <li><b>Negative overflow:</b> adding two negative numbers produces a true sum
+  &lt; <code>-2<sup>w-1</sup></code>, so the truncated result wraps around into the
+  positive range.</li>
+</ul>
+<p>Worked examples with 4-bit two's complement (range -8 to 7):</p>
+<table>
+  <tr><th>x</th><th>y</th><th>True sum</th><th>5-bit sum</th><th>4-bit (2's) result</th><th>Overflow?</th></tr>
+  <tr><td>-8</td><td>-5</td><td>-13</td><td>10011</td><td>3</td><td>Negative overflow</td></tr>
+  <tr><td>-8</td><td>-8</td><td>-16</td><td>10000</td><td>0</td><td>Negative overflow</td></tr>
+  <tr><td>-8</td><td>5</td><td>-3</td><td>11101</td><td>-3</td><td>none</td></tr>
+  <tr><td>2</td><td>5</td><td>7</td><td>00111</td><td>7</td><td>none</td></tr>
+  <tr><td>5</td><td>5</td><td>10</td><td>01010</td><td>-6</td><td>Positive overflow</td></tr>
+</table>
+<p>
+  The pattern to recognize: <b>Pos + Pos &rarr; Neg means positive overflow.</b>
+  <b>Neg + Neg &rarr; Pos means negative overflow.</b> Two operands with different signs
+  can never overflow &mdash; their true sum is already guaranteed to fit within the
+  representable range.
+</p>
+<p>
+  The important hardware fact underlying all of this: unsigned addition and signed
+  (two's-complement) addition have <i>exactly the same bit-level behavior</i>. The CPU
+  uses one adder circuit regardless of how you declared your variables; only the
+  interpretation of the result bits differs:
+</p>
+<pre><code class="language-c">int s, t, u, v;
+s = (int) ((unsigned) u + (unsigned) v);
+t = u + v;
+if (s == t) printf("equal");  // always true</code></pre>
+
+<div class="quiz">
+  <div class="quiz-q-text">In 4-bit two's complement, you add 5 + 5 and get -6. What happened?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">A hardware bug — this should never happen</button>
+    <button class="quiz-opt" data-correct="true">Positive overflow — the true sum (10) exceeds TMax (7) for 4 bits, so it wraps into the negative range</button>
+    <button class="quiz-opt" data-correct="false">Negative overflow, since the result came out negative</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Two positive operands whose true sum exceeds the representable maximum wrap around into negative values — that's positive overflow by definition, regardless of the sign of the wrapped result. Neg + Neg → Pos is negative overflow; Pos + Pos → Neg is positive overflow.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>3. Signed overflow is undefined behavior in C</h2>
+<p>
+  Here's the subtlety that trips people up: on virtually every real two's-complement
+  CPU, signed overflow wraps around exactly as shown above &mdash; it's completely
+  deterministic at the hardware level. But the <b>C language standard</b> does not
+  guarantee two's-complement representation, and it declares that signed integer
+  overflow is <b>undefined behavior (UB)</b>. That's not just a technicality: because
+  it's UB, an optimizing compiler is legally allowed to assume signed overflow
+  <i>never happens</i>, and it can use that assumption to eliminate or reorder checks
+  that depend on it. A classic example: a compiler may optimize away a check like
+  <code>if (x + 1 < x)</code> (intended to detect overflow) entirely, because it's
+  allowed to assume <code>x + 1 &lt; x</code> is simply always false for a signed
+  <code>x</code> under the no-overflow assumption &mdash; even though on real hardware
+  that comparison could actually be true when <code>x</code> is <code>INT_MAX</code>.
+</p>
+<div class="callout warn">
+  <b>Takeaway:</b> unsigned overflow in C is fully defined (modular wraparound). Signed
+  overflow is undefined behavior &mdash; the hardware will wrap predictably, but the
+  compiler is not required to preserve that behavior, so code that silently relies on
+  signed wraparound is a real, exam-relevant bug, not just bad style.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>4. Multiplication and the shift trick</h2>
+<p>
+  Multiplying two <code>w</code>-bit values can require up to <code>2w</code> bits to
+  represent the full, exact product. C doesn't grow the result type automatically: it
+  truncates the <code>2w</code>-bit product down to <code>w</code> bits, keeping only the
+  low-order bits &mdash; the same truncation behavior from the previous module. This
+  means integer multiplication overflows silently and easily:
+</p>
+<pre><code class="language-c">int x = 50000 * 50000;  // exact product is 2,500,000,000
+// INT_MAX is only 2,147,483,647 -- this overflows a 32-bit int</code></pre>
+<p>
+  Multiplying or dividing by a power of 2 is special, because it corresponds exactly to
+  shifting the binary representation: <code>y = x * 8;</code> is equivalent to
+  <code>y = x &lt;&lt; 3;</code>, and this is one of the most common optimizations a
+  compiler applies automatically &mdash; a shift instruction is dramatically cheaper than
+  a general multiply on most hardware, so compilers rewrite multiplications by constant
+  powers of 2 into shifts whenever they can prove it's safe.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>5. Division by a power of 2, and rounding direction</h2>
+<p>
+  Division by a power of 2 can similarly be implemented with a shift &mdash; but only
+  carefully, because C integer division <b>rounds toward zero</b>, while a plain
+  arithmetic right shift rounds toward <i>negative infinity</i>. Those agree for positive
+  numbers but disagree for negative ones. For a non-negative <code>x</code>,
+  <code>y = x / 2;</code> and <code>y = x &gt;&gt; 1;</code> (logical or arithmetic; sign
+  bit is 0 either way) give identical results. For a negative <code>x</code>, a naive
+  arithmetic right shift rounds down (further negative) rather than toward zero, so
+  compilers generating code for signed division by a power of 2 must insert an extra
+  bias-and-correct step before shifting to get C's toward-zero rounding exactly right
+  &mdash; they can't just emit a bare shift instruction the way they can for
+  multiplication.
+</p>
+<pre><code class="language-c">int x = -7;
+x / 2;    // -3  (C rounds toward zero)
+x >> 1;   // -4  (arithmetic shift rounds toward negative infinity)
+// -7 / 2 and -7 >> 1 are NOT the same value</code></pre>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why can't a compiler always replace signed integer division by a power of 2 with a plain arithmetic right shift?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">Arithmetic shifts don't work correctly for any negative numbers at all</button>
+    <button class="quiz-opt" data-correct="true">C integer division rounds toward zero, but a plain arithmetic right shift rounds toward negative infinity — they disagree for negative dividends</button>
+    <button class="quiz-opt" data-correct="false">Shift instructions are slower than division instructions on most hardware</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>For positive numbers, shifting right and dividing by a power of 2 agree. For negative numbers they diverge: -7/2 is -3 in C (rounds toward zero) but -7 >> 1 is -4 (rounds toward negative infinity), so the compiler must add a correction step to use a shift for signed division.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>6. Practical takeaway</h2>
+<p>
+  Integer overflow is one of the most common real-world sources of bugs and security
+  vulnerabilities &mdash; from silently wrong financial calculations to buffer-size
+  computations that wrap around to a small or negative number and defeat a bounds check.
+  There's no way to avoid the possibility of overflow entirely; the practical defense is
+  choosing a data type with enough range for your problem, being explicit about
+  signedness, and testing boundary values (near <code>TMin</code>/<code>TMax</code>/<code>UMax</code>)
+  rather than assuming "it'll never get that big."
+</p>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../03-integer-representations/lesson.html">&larr; 03. Integer Representations</a>
+  <a class="next" href="../05-floating-point/lesson.html">05. Floating Point &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

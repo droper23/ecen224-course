@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>09 — Arrays, Strings &amp; Structs | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="09-c-arrays-strings-structs">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 09 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit2">Unit 2 &middot; C Programming</span>
+    <span class="badge unit2" style="opacity:0.7">Exam: Game 1</span>
+  </div>
+  <h1>Arrays, Strings &amp; Structs</h1>
+  <p class="subtitle">
+    C's arrays and structs are not "real" objects the way they are in higher-level languages
+    &mdash; they're a thin, honest description of a block of memory, with no safety net. This
+    module covers how arrays and strings are actually laid out, why C strings are
+    null-terminated char arrays with real security implications, and how structs group data
+    together (with padding the compiler inserts that you didn't ask for).
+  </p>
+  <div class="exam-note">
+    <b>Due:</b> HW8 &mdash; C Arrays, Strings, Structs (closed Oct 2). &nbsp;|&nbsp;
+    <b>Tested on:</b> Game 1 and the Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Explain why C arrays are contiguous memory with no bounds checking, and predict what <code>sizeof</code> returns for them</li>
+  <li>Describe how C represents strings as null-terminated char arrays, and why <code>strlen</code> and <code>sizeof</code> disagree</li>
+  <li>Identify buffer-overflow risk in common string functions and choose the bounded alternative</li>
+  <li>Compute a struct's in-memory layout, including compiler-inserted padding</li>
+  <li>Use <code>typedef</code> to give a struct type a convenient name</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. Arrays are contiguous memory, not objects</h2>
+<p>
+  An array declaration reserves a fixed-size, contiguous block of memory, sized according to
+  the element type and the count:
+</p>
+<pre><code class="language-c">uint8_t  vals8[3];    /* 3 &times; 1 byte  = 3 bytes total */
+int16_t  vals16[3];   /* 3 &times; 2 bytes = 6 bytes total */
+uint32_t vals32[3];   /* 3 &times; 4 bytes = 12 bytes total */</code></pre>
+<p>
+  Elements are indexed starting at 0, and <code>sizeof(array)</code> gives the array's total
+  size in bytes &mdash; <i>not</i> the number of elements. <code>sizeof(vals32)</code> is
+  <code>12</code>, not <code>3</code>; to get the element count you'd compute
+  <code>sizeof(vals32) / sizeof(vals32[0])</code>.
+</p>
+<p>
+  Array initializers can leave the size implicit, or leave elements unspecified (which then
+  default to zero):
+</p>
+<pre><code class="language-c">uint8_t a[4] = {1, 2, 3, 10};    /* explicit size */
+uint8_t b[]  = {1, 2, 3, 10};    /* size inferred: 4 */
+uint8_t c[6] = {13};             /* {13, 0, 0, 0, 0, 0} — rest zero-filled */</code></pre>
+<div class="callout warn">
+  <b>C performs no bounds checking, ever.</b> Accessing <code>vals[5]</code> on a 3-element
+  array is not a compile error and not (usually) a runtime error &mdash; it's <b>undefined
+  behavior</b>. The compiler will happily generate code that reads or writes whatever memory
+  happens to sit past the end of the array. That memory might be unused (looks like it
+  "worked"), might belong to another variable (silently corrupts it), or might be outside your
+  process's mapped memory (crashes with a segmentation fault). This single fact is the root
+  cause of an enormous fraction of real-world security vulnerabilities, and it's why later
+  units in this course spend real time on stack layout and buffer overflows.
+</div>
+<p>
+  A 2D array like <code>int matrix[4][3];</code> is really laid out as one contiguous block,
+  <b>row-major</b>: all of row 0's elements, then all of row 1's, and so on.
+</p>
+<pre><code class="language-c">int matrix[4][3] = {
+  {0,  1,  2},
+  {3,  4,  5},
+  {6,  7,  8},
+  {9, 10, 11}
+};
+/* in memory: 0 1 2 3 4 5 6 7 8 9 10 11 — row by row */</code></pre>
+</section>
+
+<section class="lesson-section">
+<h2>2. C strings: null-terminated char arrays</h2>
+<p>
+  C has no dedicated string type. A "string" is just a <code>char</code> array holding ASCII
+  values, with the convention that the string ends at the first <code>'\0'</code> (the null
+  character, value <code>0</code>) &mdash; every C string function relies on that terminator
+  being there.
+</p>
+<pre><code class="language-c">char s[3] = "hi";   /* {'h', 'i', '\0'} — exactly fits */
+char t[6] = "hi";   /* {'h', 'i', '\0', '\0', '\0', '\0'} — extra bytes zeroed */</code></pre>
+<p>
+  This is exactly why <code>sizeof</code> and <code>strlen</code> give different answers, and
+  mixing them up is a common source of bugs:
+</p>
+<ul>
+  <li><code>sizeof(s)</code> is a compile-time constant: the array's total declared size in
+  bytes, regardless of what's actually stored in it.</li>
+  <li><code>strlen(s)</code> is a runtime count: it walks the array from the start and counts
+  characters until it hits <code>'\0'</code>, <i>not including</i> the terminator itself.</li>
+</ul>
+<pre><code class="language-c">char s[6] = "hello";
+printf("%zu\n", sizeof(s));    /* 6 — the declared array size */
+printf("%zu\n", strlen(s));    /* 5 — "hello" is 5 characters, excluding '\0' */</code></pre>
+<p>
+  The array must have room for the terminator on top of the visible characters &mdash;
+  <code>char s[5] = "hello";</code> (5 characters, no room left for <code>'\0'</code>) is
+  either a compiler warning or a hard error depending on your compiler, and even where it's
+  merely a warning, the resulting array is not a valid, properly terminated C string; passing
+  it to <code>strlen</code>/<code>printf("%s", ...)</code> reads past the end of the array
+  looking for a terminator that isn't there.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>3. String functions and buffer overflow</h2>
+<p>
+  <code>&lt;string.h&gt;</code> provides the standard string operations. Several of the most
+  common ones trust the caller to have provided a large enough destination buffer, and simply
+  keep writing past its end if not &mdash; a <b>buffer overflow</b>.
+</p>
+<table>
+  <tr><th>Function</th><th>Does</th><th>Overflow risk</th></tr>
+  <tr><td><code>strlen(s)</code></td><td>length of <code>s</code>, excluding <code>'\0'</code></td><td>none (read-only, but requires a terminator to exist)</td></tr>
+  <tr><td><code>strcpy(dst, src)</code></td><td>copies <code>src</code> into <code>dst</code>, including <code>'\0'</code></td><td><b>high</b> &mdash; no length check at all</td></tr>
+  <tr><td><code>strcat(dst, src)</code></td><td>appends <code>src</code> onto the end of <code>dst</code></td><td><b>high</b> &mdash; same problem, plus it has to find the end of <code>dst</code> first</td></tr>
+  <tr><td><code>strcmp(s, t)</code></td><td>&lt;0, 0, or &gt;0 comparing <code>s</code> and <code>t</code></td><td>none</td></tr>
+  <tr><td><code>strncpy(dst, src, n)</code></td><td>copies at most <code>n</code> bytes</td><td lower, but may not null-terminate if <code>src</code> is &ge; n bytes</td></tr>
+</table>
+<p>
+  A minimal <code>strcpy</code> makes the risk obvious &mdash; it just keeps writing until it
+  sees a <code>'\0'</code> in the source, with no idea how big the destination actually is:
+</p>
+<pre><code class="language-c">/* a simplified strcpy: copy t into s */
+void strcpy(char *s, char *t)
+{
+  while ((*s++ = *t++))
+    ;
+}
+
+char buf[8];
+strcpy(buf, "this string is way longer than 8 bytes");
+/* writes 40+ bytes into an 8-byte buffer — corrupts whatever memory
+   comes after buf, which, depending on where buf lives, can mean
+   overwriting other local variables or a function's return address */</code></pre>
+<div class="callout warn">
+  <b>Prefer the bounded variants.</b> <code>strncpy(dst, src, sizeof(dst))</code> and
+  <code>snprintf(dst, sizeof(dst), "%s", src)</code> take an explicit size limit and won't
+  write past it. Even <code>strncpy</code> has a sharp edge though: if <code>src</code> is
+  <code>n</code> or more bytes long, it will <i>not</i> null-terminate <code>dst</code> for
+  you &mdash; you may need to terminate it yourself afterward. There is no fully "safe by
+  default" string copy in standard C; the responsibility is always on you to know the size of
+  every buffer you write into. This is precisely the class of bug behind decades of real
+  security vulnerabilities, and part of why later, memory-safe languages exist at all.
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why is <code>strcpy(buf, userInput);</code> dangerous when <code>userInput</code>'s length isn't controlled?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">It isn't — strcpy always stops safely at buf's declared size</button>
+    <button class="quiz-opt" data-correct="true">strcpy keeps copying bytes until it sees a '\0' in the source, with no idea how large buf actually is, so long input overflows buf and corrupts adjacent memory</button>
+    <button class="quiz-opt" data-correct="false">strcpy only works correctly on string literals, never on user input</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>strcpy's signature carries no length information about the destination — it trusts the caller entirely. If userInput is longer than buf, strcpy writes past the end of buf into whatever memory happens to follow it. This is the textbook definition of a buffer overflow, and it's exactly why bounded alternatives like snprintf exist.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>4. Structs: grouping related data</h2>
+<p>
+  A <b>struct</b> groups one or more variables (of possibly different types) into a single
+  unit. The <code>struct</code> keyword introduces the declaration; by itself, a struct
+  declaration with a tag reserves no storage &mdash; it just describes a shape:
+</p>
+<pre><code class="language-c">struct point {
+  int x;
+  int y;
+};                          /* describes the shape; reserves no storage */
+
+struct point pt;            /* this reserves storage */
+struct point maxpt = {320, 200};   /* initialized */
+
+printf("%d,%d\n", pt.x, pt.y);     /* '.' accesses a member */</code></pre>
+<p>
+  Structs can nest, and the dot operator chains naturally:
+</p>
+<pre><code class="language-c">struct rect {
+  struct point pt1;
+  struct point pt2;
+};
+
+struct rect block;
+block.pt1.x = 0;</code></pre>
+<p>
+  Legal operations on a whole struct are limited: you can copy/assign one struct to another of
+  the same type as a unit (<code>b = a;</code>), take its address with <code>&amp;</code>, and
+  access individual members &mdash; but you <b>cannot compare two structs</b> with
+  <code>==</code>, even if every member happens to be equal; that's a compile error, and if
+  you need equality you must compare member by member yourself.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>5. Struct memory layout: padding and alignment</h2>
+<p>
+  A struct's members are stored in the order they're declared, but the compiler is allowed
+  &mdash; and, on real hardware, required &mdash; to insert unused <b>padding</b> bytes between
+  members so that each member starts at an address that's a multiple of its own size (its
+  <b>alignment</b>). Accessing a multi-byte value at a misaligned address is inefficient on
+  most CPUs and outright illegal on some, so the compiler avoids it automatically.
+</p>
+<pre><code class="language-c">struct example {
+  char  a;   /* 1 byte,  needs 1-byte alignment  — offset 0 */
+             /* 3 bytes of padding inserted here */
+  int   b;   /* 4 bytes, needs 4-byte alignment  — offset 4 */
+  char  c;   /* 1 byte,  needs 1-byte alignment  — offset 8 */
+             /* 3 bytes of padding at the end, so the struct's
+                own total size is itself a multiple of its
+                largest member's alignment (4) */
+};
+/* sizeof(struct example) is 12, not 1 + 4 + 1 = 6 */</code></pre>
+<div class="callout">
+  <b>Why this matters practically:</b> <code>sizeof(struct)</code> is not simply the sum of
+  its members' sizes, and two structs with identical members in a different declaration
+  order can have different total sizes. Grouping same-size (or same-alignment) members
+  together, largest to smallest, tends to minimize wasted padding. This also matters
+  whenever you reinterpret raw bytes as a struct &mdash; e.g. reading a network packet or a
+  binary file format into a struct pointer &mdash; because the compiler's padding choices must
+  match the actual byte layout of the data, or every field after the first mismatch reads
+  garbage.
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text">A struct declares a <code>char</code> (1 byte) followed by an <code>int</code> (4 bytes). On a typical system where <code>int</code> requires 4-byte alignment, what is <code>sizeof</code> that struct most likely to be?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">5 — exactly 1 + 4</button>
+    <button class="quiz-opt" data-correct="true">8 — 3 padding bytes are inserted after the char so the int starts on a 4-byte boundary</button>
+    <button class="quiz-opt" data-correct="false">4 — the char is packed into the same word as the int</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>The int member needs to start at an address that's a multiple of 4. Placed right after a 1-byte char, it would start at offset 1 without padding — not a multiple of 4 — so the compiler inserts 3 padding bytes before it, and the struct is typically padded further so its own total size is a multiple of its largest member's alignment (4), landing on 8.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>6. <code>typedef</code>: naming struct types</h2>
+<p>
+  Without <code>typedef</code>, every use of a struct type outside its own declaration must
+  repeat the <code>struct</code> keyword: <code>struct point p1;</code>. <code>typedef</code>
+  lets you introduce a shorter alias for a type:
+</p>
+<pre><code class="language-c">typedef struct point {
+  int x;
+  int y;
+} point_t;
+
+point_t p1;       /* same as: struct point p1; */
+p1.x = 5;</code></pre>
+<p>
+  The struct tag (<code>point</code>) and the typedef'd name (<code>point_t</code>) are
+  independent and can even coexist or be omitted &mdash; you'll see all of these forms in real
+  code:
+</p>
+<pre><code class="language-c">struct point { int x; int y; };
+typedef struct point point_t;      /* alias after the fact */
+
+typedef struct {                   /* anonymous struct, no tag at all */
+  int x;
+  int y;
+} point_t;                         /* only accessible by its typedef name */</code></pre>
+<div class="callout warn">
+  <b>A variable name is not a type name.</b> These two declarations look almost identical but
+  do very different things:
+  <pre><code class="language-c">struct point {
+  int x;
+  int y;
+} myPoint;              /* declares a VARIABLE named myPoint (storage exists now) */
+
+typedef struct {
+  int x;
+  int y;
+} point_t;               /* declares a new TYPE named point_t (no variable exists yet) */
+
+point_t myPoint;          /* NOW you have a variable — a separate step */</code></pre>
+  Confusing the two is a common source of "why doesn't <code>point_t</code> have any members
+  yet" confusion for students new to the syntax.
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../08-c-operators/lesson.html">&larr; 08. C Operators</a>
+  <a class="next" href="../10-c-pointers/lesson.html">10. C Pointers &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

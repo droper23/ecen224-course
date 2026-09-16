@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>22 — Binary Bomb Lab | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="22-binary-bomb-lab">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 22 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit4">Unit 4 &middot; x86-64 Assembly</span>
+    <span class="badge unit4" style="opacity:0.7">Exam: Game 2</span>
+  </div>
+  <h1>Binary Bomb Lab</h1>
+  <p class="subtitle">
+    The binary bomb is a compiled program with six phases, each one waiting for a specific
+    input. Guess wrong and it prints <code>BOOM!</code> and reports the explosion to a
+    leaderboard; guess right and you advance. There is no source code for the phases &mdash;
+    only a binary, a debugger, and a disassembler. Everyone gets a different bomb, so this
+    module can't give you any answers. What it can give you is the workflow for finding them
+    yourself.
+  </p>
+  <div class="exam-note">
+    <b>Tested on:</b> this is a hands-on programming assignment, not a lecture &mdash; but the
+    reverse-engineering skill it builds is directly tested on Game 2 and the Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Explain what the bomb lab is and why it's built around disassembly instead of source code</li>
+  <li>Describe a repeatable workflow for approaching an unfamiliar compiled phase</li>
+  <li>Use <code>objdump -d</code> to get a static disassembly of a binary</li>
+  <li>Use core gdb commands to set breakpoints and inspect registers and memory at runtime</li>
+  <li>Apply general strategy tips for isolating a phase's expected input without guessing blindly</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. What the assignment is, and why it exists</h2>
+<p>
+  The bomb lab was created at Carnegie Mellon by the authors of the CS:APP textbook this course
+  follows, and it's been used at universities worldwide for decades &mdash; it's a well-known
+  rite of passage in systems courses, not something unique to ECEn 224. Each student downloads
+  their own randomly generated bomb binary. Running it presents six phases in sequence; each
+  phase reads a line of input, and the bomb either accepts it and moves to the next phase, or
+  detects a wrong answer and "explodes" (prints <code>BOOM!</code> and reports the failure).
+  Every phase tests a different C construct and how it compiles to machine code:
+</p>
+<table>
+  <tr><th>Phase</th><th>Tests your understanding of</th></tr>
+  <tr><td>1</td><td>String comparison</td></tr>
+  <tr><td>2</td><td>Loops</td></tr>
+  <tr><td>3</td><td>Switch statements and jump tables</td></tr>
+  <tr><td>4</td><td>Recursive function calls</td></tr>
+  <tr><td>5</td><td>Pointers</td></tr>
+  <tr><td>6</td><td>Linked lists, pointers, and structures together</td></tr>
+</table>
+<p>
+  The entire point of the exercise is that you cannot get through it by pattern-matching against
+  lecture slides or memorizing a few instruction idioms. You have no source for the phase
+  functions &mdash; only compiled code. The only way to know what a phase wants is to actually
+  read the disassembly instruction by instruction, understand what it's computing, and reason
+  backward from a comparison to the value that would satisfy it. That's precisely the skill this
+  whole unit has been building toward, and it's the skill Game 2 and the Final test directly:
+  given unfamiliar assembly, can you reconstruct what it's doing?
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. Your tools</h2>
+<ul>
+  <li><b><code>objdump -d</code></b> &mdash; produces a static disassembly of the whole binary. This is your map: read it before you start guessing at runtime behavior.</li>
+  <li><b><code>gdb</code></b> &mdash; the debugger. Lets you run the bomb under your control, pause it at chosen points, and inspect exactly what's in registers and memory at that moment.</li>
+  <li><b><code>strings &lt;filename&gt;</code></b> &mdash; dumps every printable string embedded in the binary. Phase prompts, error messages, and sometimes the literal strings a phase is comparing against are readable this way.</li>
+  <li><b><code>gcc</code></b> &mdash; useful not on the bomb itself, but as a sandbox: if a piece of disassembly is confusing, write a small C snippet you think might produce it (e.g. a switch statement) and compile it yourself to compare the output.</li>
+</ul>
+<p>
+  The bomb is compiled with debug information intact, so both <code>gdb</code> and
+  <code>objdump</code> can show you real function and variable names instead of just raw
+  addresses &mdash; use that; it's a significant head start over a fully stripped binary.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>3. A general workflow</h2>
+<ol>
+  <li><b>Get a full static disassembly first.</b> Run <code>objdump -d bomb &gt; bomb.asm</code>
+  and read it in an editor, not just on the terminal &mdash; you'll be jumping back and forth
+  between phase functions and helper functions constantly.</li>
+  <li><b>Read a phase function from the top.</b> Don't jump straight to the comparison at the
+  bottom. Work out what's happening to the input first: is it being parsed as a number, scanned
+  character by character, split into fields?</li>
+  <li><b>Find the comparisons.</b> Every phase eventually does some form of "compare what I
+  computed from your input against what I expect," using instructions like <code>cmp</code> and
+  a conditional jump (<code>je</code>, <code>jne</code>, <code>jg</code>, and so on) that leads
+  to the explosion path if the comparison fails. Identify exactly what's being compared and to
+  what.</li>
+  <li><b>Use gdb to check your reasoning at runtime.</b> Set a breakpoint right before or after
+  the comparison, run the bomb with a guessed input, and inspect the actual register and memory
+  values. This turns "I think this is what it's checking" into a confirmed fact instead of a
+  guess.</li>
+  <li><b>Work backward to the required input.</b> Once you know exactly what value (or values)
+  a phase's comparison needs to succeed, and how your input got transformed into what's being
+  compared, you can work out what input would produce that value.</li>
+</ol>
+</section>
+
+<section class="lesson-section">
+<h2>4. Useful gdb commands</h2>
+<table>
+  <tr><th>Command</th><th>What it does</th></tr>
+  <tr><td><code>break &lt;func&gt;</code></td><td>Set a breakpoint at the start of a function (e.g. <code>break phase_2</code>)</td></tr>
+  <tr><td><code>run</code></td><td>Start (or restart) the program under gdb, stopping at breakpoints</td></tr>
+  <tr><td><code>step</code> / <code>next</code></td><td>Execute one source line, stepping into calls (<code>step</code>) or over them (<code>next</code>)</td></tr>
+  <tr><td><code>stepi</code> / <code>nexti</code></td><td>Same idea, but one machine instruction at a time &mdash; what you'll use most once you're reading raw assembly</td></tr>
+  <tr><td><code>print &lt;expr&gt;</code></td><td>Print the value of a register or expression, e.g. <code>print $rax</code></td></tr>
+  <tr><td><code>x/4xb &lt;addr&gt;</code></td><td>Examine memory: 4 units, hex format, byte size, starting at <code>&lt;addr&gt;</code> (swap <code>b</code> for <code>w</code>/<code>g</code> for word/giant-word sizes)</td></tr>
+  <tr><td><code>disas</code></td><td>Disassemble the current function (or another, by name) right inside gdb</td></tr>
+  <tr><td><code>info registers</code></td><td>Dump every general-purpose register's current value at once</td></tr>
+  <tr><td><code>continue</code></td><td>Resume execution until the next breakpoint or program exit</td></tr>
+</table>
+<div class="callout">
+  <b>Tip:</b> a breakpoint that stops you at the top of a phase function, followed by repeated
+  <code>stepi</code>/<code>nexti</code> paired with <code>print</code> and
+  <code>x/&hellip;</code> on whatever register or address just changed, is enough to work through
+  almost every phase &mdash; you rarely need much more than this small set of commands.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>5. General tips</h2>
+<ul>
+  <li><b>Work one phase at a time.</b> Don't try to read the whole binary end to end before
+  starting &mdash; get phase 1 defused, then move to phase 2 with the confidence and vocabulary
+  you built solving the first one.</li>
+  <li><b>Look for parsing before comparison.</b> Many phases start by calling something like
+  <code>sscanf</code> to pull numbers or fields out of your input string before ever comparing
+  anything. Recognize that pattern early and you'll immediately know how many values a phase
+  expects and roughly what shape they take, before you've even reached the actual check.</li>
+  <li><b>When disassembly is confusing, reproduce it.</b> If you suspect a chunk of code is a
+  compiled <code>switch</code> statement, write your own small switch in C and compile it with
+  the flags suggested for this lab (roughly:
+  <code>gcc -S -fverbose-asm -fno-asynchronous-unwind-tables -fno-pie yourcode.c</code>) to see
+  matching output you can compare line by line against the bomb's.</li>
+  <li><b>Trust the debugger over your assumptions.</b> It's easy to misread an offset or a
+  comparison direction. When in doubt, set a breakpoint and look at the actual bytes rather than
+  guessing from the disassembly alone.</li>
+  <li><b>Don't brute-force guess.</b> The input space for most phases is far too large to guess
+  blindly, and the point of the lab is the reverse-engineering process itself &mdash; the same
+  process Game 2 will ask you to do by hand, on paper, without a debugger.</li>
+</ul>
+
+<div class="quiz">
+  <div class="quiz-q-text">You're staring at a phase function and see an early call to a function that looks like it's parsing your input string into a couple of integers, before any comparison happens. What should you do?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">Ignore it and skip straight to the comparison instructions, since that's the "real" logic</button>
+    <button class="quiz-opt" data-correct="true">Recognize it as likely a parsing step (e.g. <code>sscanf</code>), which tells you how many values your input needs to supply and in what form, before the actual checks run</button>
+    <button class="quiz-opt" data-correct="false">Assume the bomb is broken and restart from phase 1</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Spotting a parsing call early tells you the shape of the expected input (how many fields, what type) before you even get to the comparisons that determine the correct values — exactly the kind of structural clue the tip is pointing at.</div>
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text">Which combination of gdb commands is most directly useful for confirming what value a phase's comparison instruction is checking your input against?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false"><code>strings</code> followed by <code>gcc -S</code></button>
+    <button class="quiz-opt" data-correct="true">A <code>break</code> at (or near) the comparison, then <code>run</code>, then <code>print</code> or <code>x/&hellip;</code> on the relevant register or memory address</button>
+    <button class="quiz-opt" data-correct="false"><code>objdump -d</code> run repeatedly with different flags</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Static disassembly (objdump) shows you the instructions, but only running the program under gdb and inspecting live register/memory state at the comparison actually confirms what value is expected — which is exactly what break, run, and print/x are for.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../21-assembly-buffer-overflow/lesson.html">&larr; 21. Buffer Overflow</a>
+  <a class="next" href="../23-optimization/lesson.html">23. Optimization &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

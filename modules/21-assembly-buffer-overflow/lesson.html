@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>21 — Buffer Overflow | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="21-assembly-buffer-overflow">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 21 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit4">Unit 4 &middot; x86-64 Assembly</span>
+    <span class="badge unit4" style="opacity:0.7">Exam: Game 2</span>
+  </div>
+  <h1>Buffer Overflow</h1>
+  <p class="subtitle">
+    C trusts you completely: it never checks that a write to an array actually lands inside
+    that array. Module 19 showed that the stack frame packs local variables right next to the
+    return address that controls where execution goes next. Put those two facts together and
+    you get one of the most consequential bug classes in computing history &mdash; this module
+    covers the mechanism, why it's dangerous, and the defenses modern systems build in.
+  </p>
+  <div class="exam-note">
+    <b>CS:APP reference:</b> Chapter 3.10. &nbsp;|&nbsp;
+    <b>Tested on:</b> Game 2 and the Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Explain mechanically how writing past the end of a stack buffer can corrupt a saved return address</li>
+  <li>Identify why unbounded string functions like <code>gets()</code> and <code>strcpy()</code> are dangerous, and what to use instead</li>
+  <li>Describe how a corrupted return address can hijack control flow ("stack smashing")</li>
+  <li>Name the three major modern mitigations and explain what each one actually prevents</li>
+  <li>Explain why none of these mitigations fully eliminates the underlying problem</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. The setup: no bounds checking, and neighbors on the stack</h2>
+<p>
+  Two ordinary facts about C combine into a serious problem the moment you put them together:
+</p>
+<ul>
+  <li><b>C performs no bounds checking on array references.</b> Writing to
+  <code>buf[24]</code> when <code>buf</code> only has 4 elements is not an error the language
+  detects &mdash; it's just a memory write to whatever address that indexing arithmetic happens
+  to compute.</li>
+  <li><b>Local variables share the stack with control information.</b> As Module 19 covered, a
+  stack frame holds local variables (like a character buffer) right alongside saved register
+  values and the return address that says where execution resumes after the function returns.</li>
+</ul>
+<p>
+  So: a write to an out-of-bounds array element that lives on the stack doesn't just corrupt
+  some unrelated variable &mdash; if the array is stored below (i.e., before, given the stack
+  grows down) the saved registers and return address in memory, writing past its end walks
+  straight into that control information. This is generically called a
+  <b>buffer overflow</b>, and when it clobbers a return address specifically, it's often called
+  <b>stack smashing</b>.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. How it happens: unbounded string input</h2>
+<p>
+  The single most common real-world trigger is a string-handling function that copies input of
+  unknown length into a fixed-size buffer with no limit check. The classic offender is
+  <code>gets()</code>:
+</p>
+<pre><code class="language-c">/* Get a string from stdin -- classic (dangerous) implementation */
+char *gets(char *dest) {
+    int c = getchar();
+    char *p = dest;
+    while (c != EOF &amp;&amp; c != '\n') {
+        *p++ = c;          /* no check that p is still inside dest's buffer! */
+        c = getchar();
+    }
+    *p = '\0';
+    return dest;
+}</code></pre>
+<p>
+  <code>gets()</code> has no parameter for the buffer's size &mdash; it simply keeps writing
+  characters until it sees a newline or end-of-file, no matter how big the destination actually
+  is. <code>strcpy()</code> has the same defect for a different reason: it copies until it sees
+  a NUL byte in the source, regardless of how much room the destination has. <code>scanf()</code>,
+  <code>fscanf()</code>, and <code>sscanf()</code> inherit the same risk whenever they're given
+  an unbounded <code>%s</code> conversion.
+</p>
+<p>Consider a function with an obviously undersized buffer:</p>
+<pre><code class="language-c">void echo() {
+    char buf[4];   /* way too small for typical input */
+    gets(buf);
+    puts(buf);
+}</code></pre>
+<p>Compiled, the frame for <code>echo</code> allocates 24 bytes below the return address:</p>
+<pre><code class="language-x86asm">echo:
+  subq  $24, %rsp     # allocate the frame -- buf gets 4 bytes of it
+  movq  %rsp, %rdi     # pass &amp;buf[0] to gets
+  call  gets
+  ...</code></pre>
+<p>
+  A 4-byte buffer sitting inside a 24-byte frame means there are exactly 20 bytes of "extra"
+  space before the saved return address is reached. An input string of 24 characters fits inside
+  that slack and the return address survives untouched. An input just one byte longer starts
+  overwriting the return address itself &mdash; at that point, what <code>ret</code> jumps to
+  next is no longer under the program's control, it's whatever bytes the input happened to
+  supply. Depending on exactly what ends up there, the visible result ranges from the program
+  working by pure coincidence, to a segmentation fault, to &mdash; if an attacker chose those
+  bytes deliberately &mdash; execution being redirected to code of the attacker's choosing. This
+  is exactly how the 1988 Morris worm and countless vulnerabilities since have compromised real
+  machines: not through some exotic flaw, but through an ordinary unbounded string copy into an
+  ordinary stack buffer.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why is a stack buffer overflow potentially more dangerous than, say, overflowing an array allocated on the heap?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">Heap memory is read-only, so heap overflows are always harmless</button>
+    <button class="quiz-opt" data-correct="true">A stack buffer typically sits in the same frame as the saved return address, so overflowing it can overwrite exactly the value that controls where execution jumps next</button>
+    <button class="quiz-opt" data-correct="false">The stack is slower than the heap, which limits how much damage an overflow can do</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>The danger isn't the stack itself &mdash; it's proximity. A stack frame packs local buffers next to saved registers and the return address, so a big enough overflow reaches control information that directly determines what code runs next.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>3. Fixing the source: bounded functions</h2>
+<p>
+  The most direct defense is simply not calling unbounded functions on untrusted input in the
+  first place. Every dangerous function above has a bounded counterpart that takes an explicit
+  size limit:
+</p>
+<table>
+  <tr><th>Avoid</th><th>Use instead</th></tr>
+  <tr><td><code>gets(buf)</code></td><td><code>fgets(buf, sizeof(buf), stdin)</code></td></tr>
+  <tr><td><code>strcpy(dst, src)</code></td><td><code>strncpy(dst, src, sizeof(dst))</code></td></tr>
+  <tr><td><code>scanf("%s", buf)</code></td><td><code>scanf("%63s", buf)</code> (an explicit width), or <code>fgets</code></td></tr>
+</table>
+<p>
+  This is a code-level fix, not a system-level one &mdash; it only helps if the programmer
+  actually uses the bounded version everywhere. The next section covers what the platform does
+  to protect programs that don't.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>4. System-level mitigations</h2>
+<p>
+  Because programmers keep making the same mistake, modern compilers and operating systems add
+  layers of defense that don't rely on every line of code being written correctly. Three are
+  standard on essentially every machine you'll use:
+</p>
+<table>
+  <tr><th>Mitigation</th><th>How it works</th><th>What it stops</th></tr>
+  <tr><td><b>Stack canaries</b></td><td>The compiler (GCC's <code>-fstack-protector</code>, on by default) inserts a random guard value between local buffers and the saved return address. Before returning, it re-checks that value; a mismatch aborts the program instead of returning.</td><td>Detects that an overflow reached the return address, and stops before control is transferred to corrupted data &mdash; but only for buffers the compiler chose to protect, and only for a straight-through overflow that has to cross the canary to reach the return address.</td></tr>
+  <tr><td><b>ASLR (stack randomization)</b></td><td>The OS places the stack (and other regions) at a randomized address each time the program runs.</td><td>Makes it much harder for an attacker to know in advance the address of anything they'd want to jump to &mdash; but a large-enough exposed range, or a leaked address, can defeat it.</td></tr>
+  <tr><td><b>Non-executable stack (NX / DEP)</b></td><td>The OS marks stack (and heap) memory pages as writable but not executable, using a hardware-enforced permission bit.</td><td>Blocks the classic technique of writing attacker-supplied machine code onto the stack and jumping into it &mdash; but does not stop an attacker from redirecting control to code that already exists and is already marked executable, such as chaining together fragments of the program's own compiled code (an approach known as return-oriented programming).</td></tr>
+</table>
+<div class="callout warn">
+  <b>None of these fixes the underlying bug.</b> Canaries, ASLR, and NX are all
+  <i>mitigations</i> that make exploitation harder and turn many overflows into a clean crash
+  instead of a hijack &mdash; they don't stop C from writing wherever an out-of-bounds index
+  says to. The only real fix is not overflowing the buffer in the first place: use bounded
+  functions, validate lengths, and treat every buffer that touches untrusted input as
+  security-critical code.
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text">A program is compiled with stack canaries, ASLR, and a non-executable stack all enabled. Is it now safe to call <code>gets()</code> on untrusted input?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">Yes &mdash; these three mitigations together fully eliminate the buffer overflow problem</button>
+    <button class="quiz-opt" data-correct="true">No &mdash; the underlying unbounded write still happens; these mitigations only make it harder to turn into a successful exploit, typically by causing a detected crash instead</button>
+    <button class="quiz-opt" data-correct="false">Yes, but only on 64-bit systems</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>These are called mitigations, not fixes, for a reason: the array write with no bounds check still happens exactly as before. A canary can only detect corruption after the fact, ASLR can be defeated by a leaked address, and NX doesn't stop attacks that reuse existing executable code. The buffer is still overflowed.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../20-assembly-memory/lesson.html">&larr; 20. Memory Management</a>
+  <a class="next" href="../22-binary-bomb-lab/lesson.html">22. Binary Bomb Lab &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

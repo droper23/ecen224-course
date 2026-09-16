@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>01 — Overview | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="01-overview">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 01 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit1">Unit 1 &middot; Data Representation</span>
+    <span class="badge unit1" style="opacity:0.7">Exam: Game 1</span>
+  </div>
+  <h1>Overview</h1>
+  <p class="subtitle">
+    There's no magic inside a computer &mdash; just simple parts, an enormous number of
+    them, and instructions followed exactly. This module sets up why this course exists:
+    the levels of abstraction between a C program and a transistor, and the five "great
+    realities" that make understanding those lower levels worth your time even if you
+    never write assembly by hand.
+  </p>
+  <div class="exam-note">
+    <b>CS:APP reference:</b> Chapter 1.1&ndash;1.3. &nbsp;|&nbsp;
+    <b>Tested on:</b> Game 1 and the comprehensive Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Describe the levels of abstraction from an algorithm down to physical devices</li>
+  <li>Trace how a C statement becomes assembly, then machine code, through the compiler/assembler pipeline</li>
+  <li>State each of the five "great realities" of computer systems and why it matters</li>
+  <li>Explain why this course is "programmer-centric" rather than "builder-centric"</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. There is no magic</h2>
+<p>
+  It's tempting to treat a computer as a black box: code goes in, behavior comes out.
+  But computers do not have minds of their own &mdash; you have to tell them exactly what
+  to do, and they follow those instructions exactly, every time. What makes computers
+  powerful is not cleverness at the bottom; it's that they're built from very simple
+  parts, those parts are extremely fast, and there are a staggering number of them
+  working together. Every abstraction you rely on as a programmer &mdash; variables,
+  function calls, arrays &mdash; is ultimately implemented by those simple parts, and this
+  course is about understanding that implementation well enough to reason about it when
+  things go wrong or need to go faster.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. Levels of abstraction</h2>
+<p>
+  Solving a real problem on a computer means passing it down through several layers,
+  each one translating the layer above into something the layer below can execute:
+</p>
+<ul>
+  <li><b>Problems</b> &mdash; the real-world task you're trying to solve</li>
+  <li><b>Algorithms</b> &mdash; a precise, finite procedure for solving it</li>
+  <li><b>Language (program)</b> &mdash; the algorithm expressed in a programming language</li>
+  <li><b>Machine (ISA) architecture</b> &mdash; the instruction set a specific CPU understands</li>
+  <li><b>Micro-architecture</b> &mdash; how that instruction set is actually implemented in hardware</li>
+  <li><b>Circuits</b> &mdash; gates, adders, multiplexers, flip-flops that implement the micro-architecture</li>
+  <li><b>Devices</b> &mdash; the transistors and wires that implement the circuits</li>
+</ul>
+<p>
+  As you move down this stack, the choices get more specific: the top levels are
+  <i>programmable</i> and portable, while the bottom levels are fixed once a chip is
+  manufactured, and increasingly specific to a single computer or even a single
+  manufacturer. A concrete example makes the top of the stack tangible: a C statement
+  like <code>c = a + b;</code> is turned by a compiler into assembly
+  (<code>ADD.W r4,r12</code>), and an assembler turns that assembly into raw machine
+  language &mdash; a string of 1s and 0s the processor executes directly.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>3. High-level vs. low-level languages</h2>
+<p>
+  High-level languages (HLLs) like C, Python, or Java are <b>machine independent</b>:
+  they don't depend on a particular machine's organization and can be compiled or
+  interpreted to run on many different machines. They're easier to write, more
+  productive, and they build in higher levels of abstraction &mdash; data structures like
+  stacks and arrays, control structures like loops and switch statements &mdash; so you
+  don't have to reinvent them for every program.
+</p>
+<p>
+  C specifically was developed from 1969&ndash;1973 by Dennis Ritchie at Bell Labs, tied
+  closely to the development of Unix (most of the Unix kernel and its tools are written
+  in C), and deliberately kept small and simple by a single designer rather than a
+  committee. That combination &mdash; a small language, designed for a practical systems-
+  programming purpose &mdash; is a big part of why C remains the language this course uses
+  to look under the hood.
+</p>
+<p>
+  Low-level languages (LLLs), i.e. assembly, are the opposite trade-off:
+  <b>machine-specific</b>. They expose internal machine organization directly to the
+  programmer &mdash; the number and kind of registers, the specific instructions available,
+  memory addressing modes, condition-code flags, and other hardware features. Assembly
+  programming means lower productivity than writing C or Python, but it gives you
+  direct control that can translate into higher-performing code, and it's the language
+  the Instruction Set Architecture (ISA) is defined in terms of.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">A high-level language program is machine independent. What does that actually buy you?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">It runs faster than equivalent assembly on every machine</button>
+    <button class="quiz-opt" data-correct="true">The same source can be compiled to run on different machine architectures without being rewritten</button>
+    <button class="quiz-opt" data-correct="false">It gives the programmer direct access to registers and addressing modes</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>"Machine independent" means the HLL program isn't tied to one machine's organization, so a compiler can retarget it to different ISAs. Direct access to registers and addressing modes is the opposite trade-off — that's what a low-level (assembly) language gives you, usually at the cost of portability and productivity.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>4. Hardware and software are not separate worlds</h2>
+<p>
+  It's a common but mistaken belief that software engineers can afford to be clueless
+  about hardware, or vice versa. In reality, hardware and software are both essential
+  parts of one computing system, and computer systems work best when designed by people
+  who understand both: hardware designers who understand programming design better
+  computers, and software designers who understand the capabilities and limits of the
+  underlying hardware write more efficient programs. That's the whole premise of this
+  course &mdash; most ECEn/IT&amp;C courses emphasize abstraction (abstract data types,
+  asymptotic analysis), but those abstractions have limits, especially once bugs enter
+  the picture, and this course exists to teach the details underneath them.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>5. The five great realities</h2>
+<p>
+  These five points, straight from CS:APP, are the throughline of the entire course.
+  Expect every one of them to resurface in later modules.
+</p>
+<h3>Great Reality #1: Ints are not integers, floats are not reals</h3>
+<p>
+  Mathematical integers and reals are infinite and exact; their computer representations
+  are finite and approximate. That gap breaks properties you'd normally take for
+  granted. Is <code>x*x &ge; 0</code> always true? For floats, yes. For a 32-bit signed
+  int, <code>50000 * 50000</code> overflows and can come out negative. Is
+  <code>(x + y) + z</code> always equal to <code>x + (y + z)</code>? For integers, yes
+  (associativity holds). For floats, not necessarily &mdash; rounding at each step means
+  <code>(1e20 + -1e20) + 3.14</code> gives <code>3.14</code>, but
+  <code>1e20 + (-1e20 + 3.14)</code> can give a different answer. Integer arithmetic
+  satisfies "ring" properties (commutativity, associativity, distributivity); floating
+  point only satisfies weaker "ordering" properties. Knowing which abstractions actually
+  hold in which context matters enormously for compiler writers and for anyone writing
+  numerically sensitive code &mdash; and it's exactly what modules 2&ndash;5 of this course
+  cover in detail.
+</p>
+<h3>Great Reality #2: You've got to know assembly</h3>
+<p>
+  You'll probably never hand-write a large program in assembly &mdash; compilers are
+  better and more patient at that than you are. But understanding assembly is the key
+  to the machine-level execution model your high-level code actually runs on. You need
+  it to reason about program behavior in the presence of bugs (where high-level language
+  guarantees quietly break down), to tune performance (understanding what optimizations
+  a compiler did or didn't apply, and why code is slow), to implement system software
+  (compilers target machine code, and operating systems must manage raw process state),
+  and to create or defend against malware. In this course, x86 assembly is the language
+  of choice for all of that.
+</p>
+<h3>Great Reality #3: Memory matters</h3>
+<p>
+  "Unbounded random-access memory" is a convenient abstraction, not physical reality.
+  Real memory must be allocated and managed, many applications are memory-dominated, and
+  memory-referencing bugs are especially nasty because their effects can be distant in
+  both time and space from the line of code that caused them. A classic example: a
+  struct with an <code>int a[2]</code> followed by a <code>double d</code> lets you write
+  out of bounds of <code>a</code> and silently corrupt <code>d</code> instead &mdash; and
+  because C and C++ provide no memory protection, whether that has any visible effect at
+  all depends on the system and compiler. On top of correctness, memory performance is
+  also not uniform: cache and virtual-memory effects can change a program's real-world
+  speed by an order of magnitude even when the algorithm and instruction count are
+  identical.
+</p>
+<h3>Great Reality #4: There's more to performance than asymptotic complexity</h3>
+<p>
+  Big-O analysis ignores constant factors, and even the exact operation count doesn't
+  fully predict real performance &mdash; it's easy to see a 10:1 performance range between
+  two implementations of the same algorithm depending purely on how the code is written.
+  Getting real performance requires optimizing at multiple levels at once: algorithm
+  choice, data representation, procedure structure, and loop structure, plus
+  understanding how the memory hierarchy responds to your access pattern (a
+  matrix-copy loop that walks memory in a different order than another, functionally
+  identical loop, can run nearly 20&times; slower purely from cache behavior).
+</p>
+<h3>Great Reality #5: Computers do more than execute programs</h3>
+<p>
+  They need to move data in and out, so I/O is critical to both reliability and
+  performance, and they communicate with each other over networks, which introduces
+  system-level issues that don't exist in a single-threaded, single-machine program:
+  concurrent operations by independent processes, coping with unreliable media, and
+  cross-platform compatibility.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why does this course spend time on assembly and low-level representations if you'll rarely hand-write assembly yourself?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">Because compilers can't be trusted to produce correct code</button>
+    <button class="quiz-opt" data-correct="true">Because understanding the machine-level execution model is essential for debugging, tuning performance, and reasoning about security</button>
+    <button class="quiz-opt" data-correct="false">Because the C standard requires all programmers to read assembly output</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Great Reality #2: you'll rarely write assembly by hand, but understanding it is what lets you reason about bugs, tune performance, and understand security vulnerabilities once the high-level language model breaks down.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>6. This course's perspective</h2>
+<p>
+  Most systems courses are <b>builder-centric</b>: computer architecture has you design a
+  pipelined processor, embedded systems has you build I/O drivers, networking has you
+  implement network protocols. This course is <b>programmer-centric</b> instead &mdash; the
+  goal is to show that knowing more about the underlying system makes you a more
+  effective programmer. That means writing code that's more reliable and efficient,
+  understanding features that hook into the OS (concurrency, signal handlers), and
+  covering material you won't necessarily see in other courses. You don't need to be a
+  "hacker" coming in; that's the point of the course.
+</p>
+<p>
+  Zooming all the way out: computers are fundamentally data-centric machines. They take
+  data in and push data out, and the only thing that distinguishes one kind of data
+  object from another &mdash; a number, a string, an image, an instruction &mdash; is the
+  context in which we choose to view it. That idea is exactly where the next module,
+  Information Storage, picks up.
+</p>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="next" href="../02-information-storage/lesson.html">02. Information Storage &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>07 — C I/O | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="07-c-io">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 07 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit2">Unit 2 &middot; C Programming</span>
+    <span class="badge unit2" style="opacity:0.7">Exam: Game 1</span>
+  </div>
+  <h1>C I/O</h1>
+  <p class="subtitle">
+    C has no built-in notion of "print" or "read a number" &mdash; input and output are just
+    ordinary library functions declared in <code>&lt;stdio.h&gt;</code>. This module covers
+    <code>printf</code> and <code>scanf</code>'s format-string mini-language, why terminal I/O
+    is buffered, and the pitfalls that make <code>scanf</code> one of the most common sources
+    of bugs in intro C code.
+  </p>
+  <div class="exam-note">
+    <b>Due:</b> HW6 &mdash; C I/O (closed Sep 28). &nbsp;|&nbsp;
+    <b>Tested on:</b> Game 1 and the Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Read and write <code>printf</code>/<code>scanf</code> format specifiers, including flags, field width, precision, and length modifiers</li>
+  <li>Explain why terminal I/O is buffered, and how that changes when output actually appears</li>
+  <li>Choose the correct conversion character for a given C type, and explain common mismatches (<code>%d</code> vs <code>%ld</code> vs <code>%f</code>)</li>
+  <li>Check <code>scanf</code>'s return value to detect a failed or partial conversion</li>
+  <li>Explain the pitfall of mixing <code>scanf("%d", ...)</code> with <code>getchar</code>/<code>fgets</code>, and how leftover input causes it</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. I/O is a library, not a language feature</h2>
+<p>
+  C itself has no <code>print</code> keyword. Input and output are ordinary functions,
+  defined by the ANSI C standard and declared in the <code>&lt;stdio.h&gt;</code> header
+  (which, remember from Module 6, contains only declarations &mdash; the actual implementation
+  lives in the C standard library your compiler links against). The core functions:
+</p>
+<table>
+  <tr><th>Function</th><th>Does</th></tr>
+  <tr><td><code>getchar()</code></td><td>read the next character from stdin</td></tr>
+  <tr><td><code>putchar(c)</code></td><td>write character <code>c</code> to stdout</td></tr>
+  <tr><td><code>printf(fmt, ...)</code></td><td>convert and write formatted output to stdout</td></tr>
+  <tr><td><code>scanf(fmt, ...)</code></td><td>read from stdin and convert into the given arguments</td></tr>
+  <tr><td><code>sprintf(s, fmt, ...)</code></td><td>like <code>printf</code>, but writes into a string <code>s</code></td></tr>
+  <tr><td><code>sscanf(s, fmt, ...)</code></td><td>like <code>scanf</code>, but reads from a string <code>s</code></td></tr>
+</table>
+<p>
+  Three predefined streams exist as soon as your program starts:
+  <code>stdin</code> (default input, the keyboard), <code>stdout</code> (default output, the
+  screen), and <code>stderr</code> (also the screen by default, but a separate stream
+  conventionally reserved for error messages so they can be redirected independently of normal
+  output). A file variant of every function above exists too &mdash; <code>fprintf</code>,
+  <code>fscanf</code>, <code>fgetc</code>, <code>fputc</code> &mdash; each taking an explicit
+  <code>FILE *</code> stream argument, covered in section 5 below.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. Buffering: why output doesn't always appear right away</h2>
+<p>
+  Both <code>stdin</code> and <code>stdout</code> are normally <b>buffered</b>: a buffer is a
+  temporary staging area in memory that characters pass through before they actually reach
+  the terminal, or before your program actually sees them.
+</p>
+<ul>
+  <li><b>Input side:</b> keystrokes are captured and held by the terminal's own line-buffering
+  as you type, which is what lets you use backspace to fix a typo before hitting enter. Your
+  program doesn't see any of it until you press Enter (<code>\n</code>) &mdash; the whole line
+  is released to <code>stdin</code> at once.</li>
+  <li><b>Output side:</b> text you <code>printf</code> is typically held in a buffer and not
+  actually drawn to the screen until a newline is written, the buffer fills up, or the program
+  exits normally. This is why a <code>printf</code> without a trailing <code>\n</code> can
+  appear to "not print" &mdash; it's sitting in the buffer, and will show up eventually, but
+  possibly out of order relative to other output if you're mixing buffered and unbuffered
+  streams (like <code>stdout</code> and <code>stderr</code>).</li>
+</ul>
+<div class="callout">
+  <b>Practical consequence:</b> if you're debugging with <code>printf</code> statements and
+  your program crashes, prints you expected to see might never have been flushed to the
+  screen. Ending debug prints with <code>\n</code>, or calling <code>fflush(stdout)</code>
+  explicitly, makes sure output actually appears before a crash swallows it.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>3. <code>printf</code>: formatted output</h2>
+<p>
+  <code>printf</code>'s first argument is a <b>format string</b> containing two kinds of
+  content: ordinary characters, copied to the output as-is, and <b>conversion
+  specifications</b>, which each consume and format the next argument in the list.
+</p>
+<pre><code class="language-c">printf("X = %d, Y = %d\n", x, y);</code></pre>
+<p>
+  A conversion specification begins with <code>%</code> and ends with a conversion character,
+  with optional pieces in between, in this order:
+</p>
+<pre><code class="language-plaintext">%  [flags]  [field width]  [.precision]  [length modifier]  conversion-char</code></pre>
+<ul>
+  <li><b>Flags:</b> <code>-</code> left-justifies within the field width (default is right-justified); <code>0</code> pads with leading zeros instead of spaces.</li>
+  <li><b>Field width:</b> a number giving the minimum number of characters to print, padding with spaces (or zeros) if the value is shorter.</li>
+  <li><b>Precision</b> (after a <code>.</code>): for <code>%f</code>, how many digits after the decimal point (default 6); for <code>%s</code>, the maximum number of characters printed from the string.</li>
+  <li><b>Length modifier:</b> <code>h</code> for a <code>short</code> argument, <code>l</code> (letter ell) for a <code>long</code> argument.</li>
+</ul>
+<p>The most common conversion characters:</p>
+<table>
+  <tr><th>Char</th><th>Argument type</th><th>Prints as</th></tr>
+  <tr><td><code>d</code>, <code>i</code></td><td><code>int</code></td><td>signed decimal</td></tr>
+  <tr><td><code>u</code></td><td><code>unsigned int</code></td><td>unsigned decimal</td></tr>
+  <tr><td><code>x</code>, <code>X</code></td><td><code>int</code></td><td>unsigned hex (lower/upper case digits)</td></tr>
+  <tr><td><code>o</code></td><td><code>int</code></td><td>unsigned octal</td></tr>
+  <tr><td><code>c</code></td><td><code>int</code></td><td>a single character</td></tr>
+  <tr><td><code>s</code></td><td><code>char *</code></td><td>characters up to <code>'\0'</code> (or the given precision)</td></tr>
+  <tr><td><code>f</code></td><td><code>double</code></td><td><code>[-]m.dddddd</code></td></tr>
+  <tr><td><code>e</code>, <code>E</code></td><td><code>double</code></td><td>scientific notation</td></tr>
+  <tr><td><code>p</code></td><td><code>void *</code></td><td>a pointer value</td></tr>
+</table>
+<div class="callout warn">
+  <b>The single most common printf bug:</b> the conversion character must match the argument's
+  actual type, and the compiler often won't catch a mismatch for you. <code>%d</code> expects
+  a plain <code>int</code> &mdash; passing a <code>long</code> there is undefined behavior on
+  many platforms because the two types are different sizes; use <code>%ld</code> for
+  <code>long</code>. Likewise, <code>%f</code> expects a <code>double</code>, not an
+  <code>int</code> &mdash; passing an <code>int</code> where <code>%f</code> expects a
+  <code>double</code> reads the wrong bit pattern and prints garbage, because integers and
+  floating-point numbers use completely different bit encodings (recall Module 5). There is no
+  automatic conversion happening here the way there is in an ordinary expression like
+  <code>x + 1.0</code> &mdash; <code>printf</code> just reads however many bytes the format
+  specifier tells it to, from wherever the arguments happen to be.
+</div>
+<p>Field width and precision interact in ways worth seeing spelled out. With
+<code>printf("%s", "hello, world")</code> (12 characters):</p>
+<pre><code class="language-plaintext">"%s"        :hello, world:      default
+"%10s"      :hello, world:      min field 10 (string already exceeds it)
+"%.10s"     :hello, wor:        max 10 characters printed
+"%-10s"     :hello, world:      min field 10, left justified
+"%15.10s"   :     hello, wor:   min field 15, max 10 characters</code></pre>
+<p>And with <code>printf("%f", 12345.12345)</code>:</p>
+<pre><code class="language-plaintext">"%f"        :12345.123450:   default precision, 6 digits
+"%.3f"      :12345.123:      precision 3
+"%15.3f"    :      12345.123:  min field 15, precision 3</code></pre>
+
+<div class="quiz">
+  <div class="quiz-q-text">A function takes a <code>long counter</code>. Which format specifier correctly prints it with <code>printf</code>?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false"><code>%d</code></button>
+    <button class="quiz-opt" data-correct="true"><code>%ld</code></button>
+    <button class="quiz-opt" data-correct="false"><code>%f</code></button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span><code>%d</code> is sized for a plain <code>int</code>; on most 64-bit platforms <code>long</code> is a different (wider) size, so the length modifier <code>l</code> is required: <code>%ld</code>. <code>%f</code> is for floating-point types entirely, not integers.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>4. <code>scanf</code>: formatted input, and its traps</h2>
+<p>
+  <code>scanf</code> mirrors <code>printf</code> in reverse: it reads characters from
+  <code>stdin</code>, interprets them according to a format string, and stores the converted
+  results through its remaining arguments &mdash; which must all be <b>pointers</b>, since
+  <code>scanf</code> needs to know the address to write into, not just a value.
+</p>
+<pre><code class="language-c">int day, year;
+char monthname[20];
+scanf("%d %s %d", &amp;day, monthname, &amp;year);   /* reads: 25 Dec 1988 */</code></pre>
+<p>
+  Note there's no <code>&amp;</code> before <code>monthname</code> &mdash; an array name
+  already decays into a pointer to its first element (this will make more sense after
+  Module 9 on arrays and Module 10 on pointers; for now, the rule is: <code>scanf</code>
+  needs an address, and an array name already <i>is</i> one, while a plain variable like
+  <code>day</code> needs <code>&amp;</code> to produce one).
+</p>
+<p>
+  For each conversion, <code>scanf</code> skips leading whitespace, then reads characters
+  until it hits the first one that <i>doesn't</i> belong to the value being converted:
+  <code>%d</code> reads until the first non-digit, <code>%s</code> reads until the first
+  whitespace character. Any literal, non-<code>%</code> text in the format string (including
+  plain spaces) must match the input stream, or the conversion stops right there.
+</p>
+<div class="callout warn">
+  <b>Always check the return value.</b> <code>scanf</code> returns the number of
+  <i>successful</i> conversions, which is not necessarily the number you asked for. If the
+  input doesn't match the format &mdash; e.g. a user types letters where a number was expected,
+  or a literal character in the format string like <code>/</code> doesn't appear in the input
+  &mdash; <code>scanf</code> simply stops converting and returns early, leaving the remaining
+  arguments untouched (and full of whatever garbage they had before, if they're uninitialized
+  locals &mdash; see Module 6). Code that ignores <code>scanf</code>'s return value and barrels
+  ahead is one of the most common sources of bugs in early C assignments.
+</p>
+<pre><code class="language-c">int matched = scanf("%s %d/%d/%d %lf", name, &amp;month, &amp;day, &amp;year, &amp;gpa);
+/* input "Muss 02 16 69 3.02" doesn't match the literal '/', so scanf
+   stops after 2 successful conversions and returns 2, not 5 */</code></pre>
+</div>
+<p>
+  Note also the length modifier for <code>scanf</code>: <code>%lf</code> is required to read
+  into a <code>double *</code> (unlike <code>printf</code>, where <code>%f</code> alone works
+  for a <code>double</code> argument, because default argument promotion converts
+  <code>float</code> to <code>double</code> automatically when passed through
+  <code>...</code> &mdash; but <code>scanf</code> is writing through a pointer, so no such
+  promotion happens, and the size must be exact).
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">A program calls <code>int n = scanf("%d %d", &amp;a, &amp;b);</code> and the user types <code>7 banana</code>. What happens?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">The program crashes immediately</button>
+    <button class="quiz-opt" data-correct="true"><code>a</code> is set to 7, <code>b</code> is left untouched, and <code>n</code> is 1</button>
+    <button class="quiz-opt" data-correct="false"><code>a</code> and <code>b</code> are both set to 7</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>scanf converts greedily until it hits input that doesn't match the next specifier. "7" satisfies the first %d, but "banana" isn't a valid integer, so the second %d fails and scanf stops there, leaving b unchanged. The return value (1) is how a careful program would detect that only one of the two requested conversions actually succeeded.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>5. <code>getchar</code>/<code>fgets</code> vs. <code>scanf</code>: the leftover-newline trap</h2>
+<p>
+  A specific, extremely common bug: mixing <code>scanf("%d", ...)</code> with a later call to
+  <code>getchar()</code> or <code>fgets()</code>. The problem is what <code>%d</code>
+  <i>doesn't</i> consume: it reads digits and stops at the first non-digit &mdash; including
+  the newline the user typed to submit their input. That <code>\n</code> stays sitting in the
+  input buffer, and the very next read (say, a <code>getchar()</code> meant to read the user's
+  next keypress) immediately reads that leftover newline instead of waiting for new input:
+</p>
+<pre><code class="language-c">int n;
+char c;
+printf("Enter a number: ");
+scanf("%d", &amp;n);          /* user types "5\n"; %d consumes "5", leaves "\n" in the buffer */
+printf("Enter a letter: ");
+c = getchar();              /* immediately reads the leftover '\n', not the letter! */</code></pre>
+<p>
+  <code>%c</code> has the same problem in reverse: unlike every other <code>scanf</code>
+  conversion, <code>%c</code> does <i>not</i> skip leading whitespace by default, so a
+  <code>%c</code> placed right after a <code>%d</code> in the same format string will often
+  read that leftover newline as its character. A leading space in the format string
+  (<code>" %c"</code>) explicitly tells <code>scanf</code> to skip whitespace first.
+</p>
+<p>
+  This is also why line-oriented input (a whole line of text, including embedded spaces) is
+  usually read with <code>fgets</code> rather than <code>scanf("%s", ...)</code>:
+  <code>%s</code> stops at the first whitespace character, so it can't read a full line like
+  <code>"John Smith"</code> in one call, and &mdash; just like <code>gets</code>, which the
+  standard library dropped entirely because of this &mdash; a bare <code>%s</code> with no
+  field width has no idea how large the destination buffer is, so it will happily write past
+  the end of it on long input. <code>fgets(buf, sizeof(buf), stdin)</code> reads a whole line
+  at once, up to a given maximum size, and is the safer default for reading user input as
+  text.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>6. File and string variants</h2>
+<p>
+  The same formatted I/O extends beyond the terminal. File variants take an explicit
+  <code>FILE *</code> stream, opened first with <code>fopen</code>:
+</p>
+<pre><code class="language-c">FILE *infile  = fopen("myinfile.txt", "r");   /* NULL on failure */
+FILE *outfile = fopen("myoutfile.txt", "w");
+
+fprintf(outfile, "The answer is %d\n", x);
+fscanf(infile, "%s %d/%d/%d %lf", name, &amp;month, &amp;day, &amp;year, &amp;gpa);
+
+fclose(infile);
+fclose(outfile);</code></pre>
+<table>
+  <tr><th>Mode</th><th>Meaning</th></tr>
+  <tr><td><code>"r"</code></td><td>read (file must exist)</td></tr>
+  <tr><td><code>"w"</code></td><td>write (existing contents are discarded)</td></tr>
+  <tr><td><code>"a"</code></td><td>append</td></tr>
+  <tr><td><code>"r+"</code></td><td>read and write</td></tr>
+</table>
+<p>
+  Always check whether <code>fopen</code> succeeded before using the result &mdash; it returns
+  <code>NULL</code> on failure (file doesn't exist, no permission, etc.), and dereferencing
+  that through <code>fscanf</code> or <code>fprintf</code> is undefined behavior.
+</p>
+<p>
+  <code>sprintf</code> and <code>sscanf</code> do the same job but against an in-memory string
+  instead of a stream &mdash; useful for building or parsing strings without touching a file or
+  the terminal at all:
+</p>
+<pre><code class="language-c">char buf[64];
+sprintf(buf, "x = %d, y = %d", x, y);   /* build a string in memory */
+sscanf(buf, "x = %d, y = %d", &amp;x, &amp;y); /* parse one back out */</code></pre>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../06-c-overview-and-variables/lesson.html">&larr; 06. C Overview &amp; Variables</a>
+  <a class="next" href="../08-c-operators/lesson.html">08. C Operators &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

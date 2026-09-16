@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>13 — Linking | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="13-linking">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 13 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit3">Unit 3 &middot; Under the Hood</span>
+    <span class="badge unit3" style="opacity:0.7">Exam: Game 1</span>
+  </div>
+  <h1>Linking</h1>
+  <p class="subtitle">
+    <code>gcc -o prog main.c sum.c</code> looks like one step, but it's really three: a compiler
+    turns each source file into machine code, and then a separate program &mdash; the linker
+    &mdash; stitches those pieces together with any libraries you use into one executable. This
+    module opens up that last step: what a linker actually does, why splitting a program into
+    files works at all, and how to read the errors it produces when it can't finish the job.
+  </p>
+  <div class="exam-note">
+    <b>CS:APP reference:</b> Chapter 7.2&ndash;7.4. &nbsp;|&nbsp;
+    <b>Tested on:</b> Game 1 and the Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Trace the compilation pipeline from source files to a single executable</li>
+  <li>Explain what an object file contains and what a symbol is</li>
+  <li>State the two jobs a linker does: symbol resolution and relocation</li>
+  <li>Distinguish static from dynamic linking and say why each exists</li>
+  <li>Diagnose "undefined reference" and "multiple definition" linker errors from the strong/weak symbol rules</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. The compilation pipeline</h2>
+<p>
+  When you run <code>gcc -o prog main.c sum.c</code>, <code>gcc</code> is acting as a
+  <b>compiler driver</b>: it invokes several separate programs in sequence, and only the last
+  of them is technically "the linker."
+</p>
+<pre><code class="language-plaintext">main.c ---translators (cpp, cc1, as)---> main.o
+sum.c  ---translators (cpp, cc1, as)---> sum.o
+                                            \
+                                             +--> linker (ld) --> prog</code></pre>
+<p>
+  Each source file is translated <i>independently</i> into a <b>relocatable object file</b>
+  (<code>.o</code>) &mdash; independently enough that <code>gcc</code> never needs to see
+  <code>sum.c</code> while it's compiling <code>main.c</code>. All it needs is to know that a
+  function called <code>sum</code> exists somewhere, via its declaration. The linker is the step
+  that comes after all the individual <code>.o</code> files exist, and its job is to combine them
+  &mdash; along with any libraries &mdash; into one fully linked executable that contains the code
+  and data for every function used, regardless of which source file defined it.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. Why linkers exist</h2>
+<p>
+  Splitting a program into separately compiled files, and then relinking them, buys you two
+  things that a single monolithic source file can't give you:
+</p>
+<ul>
+  <li><b>Modularity.</b> A program can be organized as a collection of smaller, more
+  understandable files instead of one giant mass, and you can build reusable
+  <b>libraries</b> of common functions once &mdash; the standard C library and the math library
+  are exactly this &mdash; and link against them from any program that needs them.</li>
+  <li><b>Efficiency.</b> Separate compilation means that changing one source file only requires
+  recompiling <i>that</i> file and relinking &mdash; not recompiling everything. And with
+  libraries, the executable only needs to end up containing the code for the functions it
+  actually uses, rather than shipping every function in the library, every time.</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>3. What a linker actually does</h2>
+<p>
+  A linker performs two distinct steps, and most linker errors come from failures in one or the
+  other of them.
+</p>
+<p><b>Step 1 &mdash; Symbol resolution.</b> A program defines and references <b>symbols</b>:
+global variables and functions. A definition like <code>int sum(int *a, int n) { ... }</code>
+creates the symbol <code>sum</code>; a call to <code>sum(array, 2)</code> elsewhere
+<i>references</i> it. When the assembler builds an object file, it records every symbol the file
+defines in that file's <b>symbol table</b> &mdash; an array of entries, each with a name, a size,
+and a location. During symbol resolution, the linker's job is to match every symbol
+<i>reference</i> across all the object files to exactly one symbol <i>definition</i>.
+While <code>main.c</code> is compiled, the compiler has no idea where <code>sum</code>'s code will
+end up (or even that it exists, beyond the declaration) &mdash; resolving that is entirely the
+linker's job.</p>
+<p><b>Step 2 &mdash; Relocation.</b> Each object file was compiled as if it started at address 0,
+independent of every other file. The linker merges all the separate code and data sections into
+single sections, assigns every symbol a final absolute address in the executable, and then walks
+back through the code and data patching every reference to those symbols so they point at the
+real, final address instead of the placeholder each file was compiled with.</p>
+</section>
+
+<section class="lesson-section">
+<h2>4. Object files and the ELF format</h2>
+<p>There are three kinds of object file you'll encounter, all sharing one file format on Linux:</p>
+<ul>
+  <li><b>Relocatable object file</b> (<code>.o</code>) &mdash; code and data in a form that can be
+  combined with other <code>.o</code> files to build an executable. Each one comes from exactly
+  one source file.</li>
+  <li><b>Executable object file</b> (<code>a.out</code>) &mdash; code and data ready to be loaded
+  directly into memory and run.</li>
+  <li><b>Shared object file</b> (<code>.so</code>) &mdash; a special relocatable object file that
+  can be loaded and linked <i>dynamically</i>, at load time or even at run time (Windows calls the
+  equivalent a DLL).</li>
+</ul>
+<p>
+  All three are stored in <b>ELF</b> (Executable and Linkable Format), the one unified binary
+  format Linux and Unix systems use for all of them. An ELF file's most important pieces:
+</p>
+<table>
+  <tr><th>Section</th><th>Contains</th></tr>
+  <tr><td><code>.text</code></td><td>The compiled machine code</td></tr>
+  <tr><td><code>.rodata</code></td><td>Read-only data: string literals, jump tables, etc.</td></tr>
+  <tr><td><code>.data</code></td><td>Initialized global variables</td></tr>
+  <tr><td><code>.bss</code></td><td>Uninitialized global variables &mdash; has a section header but takes up no space in the file itself ("Block Started by Symbol")</td></tr>
+  <tr><td><code>.symtab</code></td><td>The symbol table &mdash; procedure and static variable names, section names and locations</td></tr>
+  <tr><td><code>.rel.text</code> / <code>.rel.data</code></td><td>Relocation info: addresses of instructions/data that still need to be patched, and how to patch them</td></tr>
+  <tr><td><code>.debug</code></td><td>Symbolic debugging info, present when compiled with <code>gcc -g</code></td></tr>
+</table>
+</section>
+
+<section class="lesson-section">
+<h2>5. Symbol resolution when a definition is missing</h2>
+<p>
+  A <i>declaration</i> like <code>void foo();</code> promises the linker a definition exists
+  somewhere. If nothing ever defines <code>foo</code>, symbol resolution fails and the linker
+  &mdash; not the compiler &mdash; reports the error, because the compiler was perfectly happy
+  with the promise:
+</p>
+<pre><code class="language-plaintext">$ gcc -c file1.c
+$ gcc file1.o -o main
+/usr/bin/ld: file1.o: in function `main':
+file1.c:(.text+0xe): undefined reference to `foo'
+collect2: error: ld returned 1 exit status</code></pre>
+<p>
+  This is why "undefined reference to X" always means the same thing: some file referenced symbol
+  <code>X</code>, and no object file or library being linked defines it. The usual fixes are:
+  you forgot to add the <code>.c</code> file (or its compiled <code>.o</code>) to the link command,
+  you forgot <code>-l</code> for a library, or you genuinely never wrote the function.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>6. Strong and weak symbols, and multiple definitions</h2>
+<p>
+  The other classic linker error is the opposite problem: too many definitions. To resolve it,
+  every global symbol is classified as <b>strong</b> or <b>weak</b>:
+</p>
+<ul>
+  <li><b>Strong:</b> functions, and global variables that are initialized (<code>int foo = 5;</code>)</li>
+  <li><b>Weak:</b> global variables that are only declared/uninitialized at file scope (<code>int foo;</code>)</li>
+</ul>
+<p>The linker resolves duplicate symbol names with three rules, in order:</p>
+<ol>
+  <li><b>Multiple strong symbols with the same name are not allowed.</b> Each one can only be
+  defined once anywhere in the program; violating this is a link-time error.</li>
+  <li><b>Given one strong symbol and one or more weak symbols with the same name, the strong
+  symbol wins.</b> Every reference to the weak symbol resolves to the strong definition instead.</li>
+  <li><b>Given multiple weak symbols with the same name and no strong one, the linker picks one
+  arbitrarily.</b> (<code>gcc -fno-common</code> turns this case into an error instead, which is
+  usually what you actually want.)</li>
+</ol>
+<div class="callout warn">
+  <b>Why rule 2 is dangerous, not just permissive:</b> if <code>file1.c</code> has
+  <code>double x;</code> (weak) and <code>file2.c</code> has <code>int x = 7;</code> (strong), the
+  linker silently merges them into <i>one</i> symbol at the strong symbol's size. Writes to
+  <code>x</code> from the file that thinks it's a <code>double</code> can then overwrite whatever
+  variable happens to sit right after it in memory &mdash; a real, silent bug with no warning at
+  link time.
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text"><code>file1.c</code> has <code>int x;</code> and <code>file2.c</code> has <code>int x = 7;</code>. What happens at link time?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">Link error: multiple definitions of <code>x</code></button>
+    <button class="quiz-opt" data-correct="true">Both files' references to <code>x</code> resolve to the same, strong (initialized) definition</button>
+    <button class="quiz-opt" data-correct="false"><code>file1.c</code>'s <code>x</code> silently shadows <code>file2.c</code>'s</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span><code>int x;</code> with no initializer is a weak symbol; <code>int x = 7;</code> is strong. Rule 2 says a strong symbol always wins over weak ones with the same name, so every reference to <code>x</code> across both files ends up pointing at the same initialized integer &mdash; no error, but both files now genuinely share one variable.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>7. Declarations, definitions, and <code>extern</code></h2>
+<p>
+  A <b>definition</b> causes storage to be set aside (<code>int sp;</code>,
+  <code>double val[MAXVAL];</code>); a <b>declaration</b> reserves no storage &mdash; it only
+  promises the linker that a definition exists somewhere else. Whenever a global variable is used
+  in a file that doesn't define it, that file needs an <code>extern</code> declaration for it:
+</p>
+<pre><code class="language-c">/* file: stack.c -- this is the definition */
+int sp = 0;
+double val[MAXVAL];
+
+/* file: main.c -- this is a declaration, not a definition */
+extern int sp;
+</code></pre>
+<p>
+  There must be exactly <i>one</i> definition of a given external variable across the whole
+  program, but as many <code>extern</code> declarations of it as you like. In practice, this is
+  exactly what header files are for: a header holds the shared declarations (and
+  <code>#define</code>s) that every <code>.c</code> file that uses a variable or function
+  <code>#include</code>s, while exactly one <code>.c</code> file holds the actual definition.
+</p>
+<p>
+  The <code>static</code> keyword does the opposite of <code>extern</code> at file scope: it
+  limits a global variable or function's visibility to the file it's declared in, so no other
+  file can reference it, even with an <code>extern</code> declaration. Applied to a <i>local</i>
+  variable inside a function, <code>static</code> means something different but related: the
+  variable's storage persists across calls instead of being reallocated each time, so it keeps
+  its value from one call to the next.
+</p>
+<pre><code class="language-c">void update(void)
+{
+    static int count = 0;  // initialized once, ever -- not on every call
+    count++;                // but this increment sticks between calls
+}</code></pre>
+</section>
+
+<section class="lesson-section">
+<h2>8. Static vs. dynamic linking</h2>
+<p>
+  Everything above describes <b>static linking</b>: all the code a program needs, including any
+  library functions it calls, is copied into the final executable at link time. That executable
+  is then self-contained, but every program that uses, say, the standard I/O library carries its
+  own copy of that code, and updating the library means relinking every program that uses it.
+</p>
+<p>
+  <b>Dynamic linking</b> instead links against a shared object (<code>.so</code>) file that stays
+  <i>separate</i> from the executable, and gets loaded and linked in at load time or run time
+  instead of at compile time. Multiple running programs can share one copy of the library code in
+  memory, executables are smaller, and the library can be updated (e.g. a security patch) without
+  recompiling every program that depends on it &mdash; the next time each program runs, it picks
+  up the new shared object automatically.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">Which of the linker's two jobs is responsible for turning a symbol's placeholder address into its real, final address in the executable?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">Symbol resolution</button>
+    <button class="quiz-opt" data-correct="true">Relocation</button>
+    <button class="quiz-opt" data-correct="false">Preprocessing</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Symbol resolution matches each reference to exactly one definition. Relocation is the separate step that then merges sections from every object file, assigns final absolute addresses, and patches every reference to point at them.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../12-debugging/lesson.html">&larr; 12. Debugging</a>
+  <a class="next" href="../14-assembly-introduction/lesson.html">14. Assembly Introduction &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

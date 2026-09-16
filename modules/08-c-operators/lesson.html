@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>08 — C Operators | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="08-c-operators">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 08 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit2">Unit 2 &middot; C Programming</span>
+    <span class="badge unit2" style="opacity:0.7">Exam: Game 1</span>
+  </div>
+  <h1>C Operators</h1>
+  <p class="subtitle">
+    C packs a lot of behavior into a small set of symbols. This module covers arithmetic,
+    relational, logical, and bitwise operators; the classic <code>=</code> vs. <code>==</code>
+    typo; pre- vs. post-increment; short-circuit evaluation; and the precedence table you'll
+    need to read C expressions correctly instead of guessing.
+  </p>
+  <div class="exam-note">
+    <b>Due:</b> HW7 &mdash; C Operators (closed Sep 30). &nbsp;|&nbsp;
+    <b>Tested on:</b> Game 1 and the Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Apply C's arithmetic, relational, logical, and bitwise operators correctly, including integer division and modulo</li>
+  <li>Distinguish bitwise operators (<code>&amp; | ^ ~ &lt;&lt; &gt;&gt;</code>) from logical operators (<code>&amp;&amp; || !</code>) and explain why confusing them compiles but misbehaves</li>
+  <li>Predict the result of pre- vs. post-increment/decrement in an expression</li>
+  <li>Evaluate a ternary conditional expression and explain why it's an expression, not a statement</li>
+  <li>Use C's operator precedence and associativity table to read an unparenthesized expression correctly</li>
+  <li>Explain short-circuit evaluation and when it matters for correctness, not just efficiency</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. Arithmetic operators</h2>
+<p>
+  C's binary arithmetic operators are <code>+ - * / %</code>; unary <code>+</code> and
+  <code>-</code> also exist and bind more tightly than their binary counterparts. Two things
+  about <code>/</code> and <code>%</code> trip people up constantly:
+</p>
+<ul>
+  <li><b>Integer division truncates.</b> <code>5 / 3</code> is <code>1</code>, not
+  <code>1.666...</code> &mdash; when both operands are integer types, the fractional part is
+  simply discarded (truncated toward zero), not rounded.</li>
+  <li><b><code>%</code> only works on integers.</b> It gives the remainder after integer
+  division (<code>5 % 3</code> is <code>2</code>) and cannot be applied to <code>float</code>
+  or <code>double</code> operands at all &mdash; that's a compile error, not a silent
+  truncation.</li>
+</ul>
+<p>
+  Mixed-type arithmetic triggers implicit <b>type conversion</b>: when a binary operator's
+  operands have different types, the "lower" type is promoted to the "higher" one before the
+  operation, following roughly <code>short &rarr; int &rarr; long &rarr; float &rarr;
+  double</code> (and unsigned outranks signed of the same size). So:
+</p>
+<pre><code class="language-c">int num1 = 5;
+double num2 = 1.5;
+int num3 = num1 / num2;
+/* num1 is promoted to double: 5.0 / 1.5 = 3.33333...
+   the double result is then truncated back to int for the assignment: num3 = 3 */</code></pre>
+<p>
+  The same promote-then-truncate pattern happens across an assignment even without a division:
+  <code>int x = 1; x = x + 4.3;</code> computes <code>1</code> promoted to <code>1.0</code>,
+  adds to get <code>5.3</code>, then truncates back to <code>int</code> for the assignment,
+  giving <code>x = 5</code>. You can also force a conversion explicitly with a <b>cast</b>:
+  <code>(double)ticks / TICKS_PER_SECOND</code> converts <code>ticks</code> to
+  <code>double</code> before the division happens, rather than letting truncation happen
+  first.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">What does <code>7 / 2 + 7 % 2</code> evaluate to in C, where both operands are <code>int</code>?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">3.5</button>
+    <button class="quiz-opt" data-correct="true">4</button>
+    <button class="quiz-opt" data-correct="false">7</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Integer division truncates: 7 / 2 = 3. The modulo gives the remainder: 7 % 2 = 1. 3 + 1 = 4. Both operators share the same (higher) precedence as multiplication and are evaluated left to right, but here they're in separate additive terms so each is computed independently first.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>2. Relational and logical operators</h2>
+<p>
+  The relational operators <code>&gt; &gt;= &lt; &lt;=</code> and equality operators
+  <code>== !=</code> all return <code>1</code> (true) or <code>0</code> (false). The logical
+  operators <code>&amp;&amp;</code> (AND), <code>||</code> (OR), and unary <code>!</code> (NOT)
+  treat any nonzero operand as true and zero as false, and themselves return <code>1</code>
+  or <code>0</code>.
+</p>
+<pre><code class="language-c">if (!valid) ...       /* same as: if (valid == 0) ... */</code></pre>
+<div class="callout warn">
+  <b>The single most infamous C bug:</b> <code>=</code> is assignment; <code>==</code> is
+  comparison. Because an assignment expression itself evaluates to the assigned value, this
+  compiles cleanly and does something completely different from what you meant:
+  <pre><code class="language-c">if (x == 1) statement;   /* correct: runs statement only if x is 1 */
+if (x = 1)  statement;   /* WRONG: assigns 1 to x, which is truthy, so
+                             statement ALWAYS runs, and x is now 1 */</code></pre>
+  Some compilers warn about this with <code>-Wall</code>; get in the habit of reading your
+  warnings, and consider writing comparisons as <code>if (1 == x)</code> so that an accidental
+  <code>=</code> becomes an assignment to a constant, which most compilers flag as an outright
+  error.
+</div>
+<p>
+  A second classic mistake is chaining comparisons the way you might in math class:
+</p>
+<pre><code class="language-c">if ('a' &lt;= x &lt;= 'z') statement;               /* WRONG */
+if (('a' &lt;= x) &amp;&amp; (x &lt;= 'z')) statement;       /* correct */</code></pre>
+<p>
+  <code>'a' &lt;= x &lt;= 'z'</code> does not mean "x is between 'a' and 'z'." Relational
+  operators associate left to right, so this parses as <code>('a' &lt;= x) &lt;= 'z'</code>:
+  first computes a <code>0</code>/<code>1</code> result from <code>'a' &lt;= x</code>, then
+  compares <i>that</i> <code>0</code> or <code>1</code> against <code>'z'</code> &mdash; which
+  is almost always true, regardless of what <code>x</code> actually is. Each comparison must
+  be written out and joined with <code>&amp;&amp;</code> explicitly.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>3. Short-circuit evaluation</h2>
+<p>
+  <code>&amp;&amp;</code> and <code>||</code> evaluate their operands left to right and stop
+  ("short-circuit") as soon as the overall result is already determined:
+</p>
+<ul>
+  <li><code>a &amp;&amp; b</code> &mdash; if <code>a</code> is false, the whole expression is
+  already false, so <code>b</code> is never evaluated.</li>
+  <li><code>a || b</code> &mdash; if <code>a</code> is true, the whole expression is already
+  true, so <code>b</code> is never evaluated.</li>
+</ul>
+<p>
+  This is not just an efficiency trick &mdash; it's frequently load-bearing for correctness,
+  especially when the right-hand side has a side effect or would be unsafe to evaluate on its
+  own:
+</p>
+<pre><code class="language-c">if (i &lt; lim - 1 &amp;&amp; (c = getchar()) != '\n') ...
+/* getchar() is only called if i < lim - 1 is still true */
+
+x || ++y;   /* ++y only runs if x is false (0) */</code></pre>
+<p>
+  A very common real pattern is guarding a pointer dereference with a null check on its left:
+  <code>if (p != NULL &amp;&amp; p-&gt;x &gt; 0)</code> relies on short-circuiting to guarantee
+  <code>p-&gt;x</code> is never evaluated when <code>p</code> is <code>NULL</code> (you'll see
+  this again once pointers are formally introduced in Module 10).
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">Given <code>int y = 0;</code> and <code>int x = 5;</code>, what does <code>x || ++y;</code> leave <code>y</code> as?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="true">0 &mdash; ++y never runs</button>
+    <button class="quiz-opt" data-correct="false">1</button>
+    <button class="quiz-opt" data-correct="false">Undefined, since side effects in || are unspecified</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>x is 5, which is truthy, so the || operator already knows the overall result is true without looking at the right-hand operand. Short-circuit evaluation means ++y is never executed at all, so y stays 0. This is well-defined behavior, not undefined behavior — || and && are exactly the operators the language guarantees an evaluation order for.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>4. Increment and decrement: prefix vs. postfix</h2>
+<p>
+  <code>++</code> adds 1 to its operand; <code>--</code> subtracts 1. Both can be used as a
+  prefix (<code>++n</code>) or postfix (<code>n++</code>) operator, and the difference is
+  entirely about <i>when the old vs. new value is used</i> in the surrounding expression
+  &mdash; in both cases, <code>n</code> itself ends up incremented either way.
+</p>
+<table>
+  <tr><th>Form</th><th>Value used in the expression</th><th>Effect on the variable</th></tr>
+  <tr><td><code>++n</code> (prefix)</td><td>the <i>new</i> value, after incrementing</td><td>incremented</td></tr>
+  <tr><td><code>n++</code> (postfix)</td><td>the <i>old</i> value, before incrementing</td><td>incremented</td></tr>
+</table>
+<pre><code class="language-c">int n = 5;
+int x = n++;   /* x = 5 (old value used), n is now 6 */
+
+int m = 5;
+int y = ++m;   /* m becomes 6 first, y = 6 (new value used) */</code></pre>
+<p>
+  This shows up constantly in loop and array idioms &mdash; e.g. copying a string one
+  character at a time with a compact postfix pattern:
+</p>
+<pre><code class="language-c">while ((s[i++] = t[j++])) ;   /* copies t into s, including the '\0' */</code></pre>
+<p>
+  Each iteration reads <code>t[j]</code>, writes it into <code>s[i]</code>, and only
+  <i>then</i> advances both <code>i</code> and <code>j</code> for next time &mdash; because
+  postfix <code>++</code> yields the pre-increment value for use in the surrounding expression,
+  while still bumping the variable as a side effect.
+</p>
+<div class="callout warn">
+  <b>Watch for unsequenced side effects.</b> C does not guarantee the order in which a
+  function's arguments are evaluated, and an expression that reads and writes the same
+  variable without a sequence point between the two is undefined behavior. Both
+  <code>a[i] = i++;</code> and <code>printf("%d %d\n", ++n, power(2, n));</code> are classic
+  examples the language explicitly leaves unspecified or undefined &mdash; don't write code
+  that depends on one particular order here, even if your specific compiler happens to do
+  what you expect today.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>5. Bitwise operators</h2>
+<p>
+  Bitwise operators only apply to integral operands (<code>char</code>, <code>short</code>,
+  <code>int</code>, <code>long</code>) and operate on individual bits, not on the value's
+  truth/falseness the way logical operators do:
+</p>
+<table>
+  <tr><th>Operator</th><th>Meaning</th></tr>
+  <tr><td><code>&amp;</code></td><td>bitwise AND</td></tr>
+  <tr><td><code>|</code></td><td>bitwise OR</td></tr>
+  <tr><td><code>^</code></td><td>bitwise XOR</td></tr>
+  <tr><td><code>~</code></td><td>bitwise NOT (complement, unary)</td></tr>
+  <tr><td><code>&lt;&lt;</code></td><td>left shift</td></tr>
+  <tr><td><code>&gt;&gt;</code></td><td>right shift</td></tr>
+</table>
+<pre><code class="language-c">n = n &amp; ~0x07;   /* clear (zero out) the lowest 3 bits */
+n = n | 0x07;    /* set the lowest 3 bits to 1 */
+n = n &lt;&lt; 2;      /* shift bits 2 positions left */
+n = n &gt;&gt; x;      /* shift right; fills with 0s if n is unsigned */</code></pre>
+<div class="callout warn">
+  <b>Do not confuse <code>&amp;</code>/<code>|</code> with <code>&amp;&amp;</code>/<code>||</code>.</b>
+  Both pairs compile in almost any context involving integers, which is exactly what makes
+  the mistake dangerous &mdash; there's no compiler error to catch you. <code>&amp;</code> is a
+  bitwise AND of every bit position; <code>&amp;&amp;</code> is a logical AND that only cares
+  whether each side is zero or nonzero as a whole. <code>4 &amp; 1</code> is <code>0</code>
+  (binary <code>100</code> AND <code>001</code> shares no set bits) even though both
+  <code>4</code> and <code>1</code> are individually truthy, so <code>4 &amp;&amp; 1</code> is
+  <code>1</code>. Using <code>&amp;</code> where you meant <code>&amp;&amp;</code> is a classic
+  silent logic bug.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>6. Assignment operators and the ternary operator</h2>
+<p>
+  Most binary operators have a corresponding compound assignment form,
+  <code>op=</code>, where <code>op</code> is one of
+  <code>+ - * / % &lt;&lt; &gt;&gt; &amp; ^ |</code>:
+</p>
+<pre><code class="language-c">i += 2;      /* same as: i = i + 2; */
+x *= y + 1;  /* same as: x = x * (y + 1); */</code></pre>
+<p>
+  In general, <code>expr1 op= expr2</code> is equivalent to
+  <code>expr1 = (expr1) op (expr2)</code>, except that <code>expr1</code> is only evaluated
+  once &mdash; which matters if the left side has a side effect, like
+  <code>arr[i++] += 3;</code>.
+</p>
+<p>
+  The <b>ternary (conditional) operator</b> <code>?:</code> is C's only three-operand
+  operator, and it's an <i>expression</i>, not a statement &mdash; it produces a value that
+  can be used anywhere an expression is expected, including nested inside another expression:
+</p>
+<pre><code class="language-c">expr1 ? expr2 : expr3
+/* expr1 is evaluated first; if nonzero, the result is expr2 (expr3 is
+   never evaluated); if zero, the result is expr3 (expr2 is never
+   evaluated) */
+
+z = (a &gt; b) ? a : b;   /* z = max(a, b) */</code></pre>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why is <code>z = (a &gt; b) ? a : b;</code> meaningfully different from writing it as an if/else that assigns <code>z</code> in each branch?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">It isn't different at all — they always compile to identical code</button>
+    <button class="quiz-opt" data-correct="true">The ternary form is itself an expression with a value, so it can be embedded inside a larger expression (e.g. as a function argument) where an if/else statement cannot appear</button>
+    <button class="quiz-opt" data-correct="false">The ternary operator short-circuits both branches simultaneously</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>An if/else is a statement — it controls flow but produces no value of its own. expr1 ? expr2 : expr3 is an expression that evaluates to expr2 or expr3, so it can be used anywhere a value is expected: printf("%d\n", (a &gt; b) ? a : b); embeds it directly as a function argument, which a bare if/else cannot do.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>7. Precedence and associativity</h2>
+<p>
+  <b>Precedence</b> determines which operator in an unparenthesized expression binds first
+  when different operator types are mixed; <b>associativity</b> determines the order among
+  operators of the <i>same</i> precedence (left-to-right, or right-to-left). A partial table,
+  from highest precedence to lowest:
+</p>
+<table>
+  <tr><th>Operators</th><th>Associativity</th></tr>
+  <tr><td><code>() [] -&gt; .</code></td><td>left to right</td></tr>
+  <tr><td><code>! ~ ++ -- + - * &amp; (type) sizeof</code> (unary)</td><td>right to left</td></tr>
+  <tr><td><code>* / %</code></td><td>left to right</td></tr>
+  <tr><td><code>+ -</code></td><td>left to right</td></tr>
+  <tr><td><code>&lt;&lt; &gt;&gt;</code></td><td>left to right</td></tr>
+  <tr><td><code>&lt; &lt;= &gt; &gt;=</code></td><td>left to right</td></tr>
+  <tr><td><code>== !=</code></td><td>left to right</td></tr>
+  <tr><td><code>&amp;</code></td><td>left to right</td></tr>
+  <tr><td><code>^</code></td><td>left to right</td></tr>
+  <tr><td><code>|</code></td><td>left to right</td></tr>
+  <tr><td><code>&amp;&amp;</code></td><td>left to right</td></tr>
+  <tr><td><code>||</code></td><td>left to right</td></tr>
+  <tr><td><code>?:</code></td><td>right to left</td></tr>
+  <tr><td><code>= += -= ...</code></td><td>right to left</td></tr>
+</table>
+<p>
+  Two rows worth memorizing specifically, because they're common exam bait:
+</p>
+<ul>
+  <li><b>Unary <code>&amp;</code>, <code>+</code>, <code>-</code>, and <code>*</code> bind
+  tighter than their binary forms</b>, and much tighter than <code>==</code>. So
+  <code>if (x &amp; MASK == 0)</code> does <i>not</i> mean "mask x, then compare to zero" the
+  way it visually reads &mdash; <code>==</code> has higher precedence than bitwise
+  <code>&amp;</code>, so this parses as <code>x &amp; (MASK == 0)</code>, comparing
+  <code>MASK</code> to <code>0</code> first and then bitwise-ANDing <code>x</code> with that
+  <code>0</code>-or-<code>1</code> result. Always parenthesize:
+  <code>if ((x &amp; MASK) == 0)</code>.</li>
+  <li><b>Assignment is right-to-left associative</b>, which is what makes chained assignment
+  work: <code>a = b = c = 5;</code> evaluates as <code>a = (b = (c = 5))</code>, so all three
+  end up <code>5</code>.</li>
+</ul>
+<p>
+  C also deliberately leaves some things unspecified even when precedence and associativity
+  are clear: the order in which a single operator's <i>operands</i> are evaluated (except for
+  <code>&amp;&amp; || ?: ,</code>) is not guaranteed, and neither is the order function
+  arguments are evaluated in. <code>x = f() + g();</code> might call <code>f()</code> or
+  <code>g()</code> first &mdash; don't write code whose correctness depends on which.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">How does <code>if (x &amp; MASK == 0)</code> actually get parsed, given that <code>==</code> has higher precedence than bitwise <code>&amp;</code>?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false"><code>(x &amp; MASK) == 0</code> — the intended meaning</button>
+    <button class="quiz-opt" data-correct="true"><code>x &amp; (MASK == 0)</code></button>
+    <button class="quiz-opt" data-correct="false">A compile error, since the types don't match</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>== binds tighter than &amp;, so MASK == 0 is evaluated first, producing 0 or 1, and then x is bitwise-ANDed with that single bit — almost never what was intended. This is a real, frequently-cited C gotcha, which is exactly why explicit parentheses around bitwise/comparison mixes are considered good style.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../07-c-io/lesson.html">&larr; 07. C I/O</a>
+  <a class="next" href="../09-c-arrays-strings-structs/lesson.html">09. Arrays, Strings &amp; Structs &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

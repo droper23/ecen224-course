@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>30 — Processes | ECEn 224</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="30-processes">
+
+<div class="topbar">
+  <a class="back" href="../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Module 30 of 32</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit5">Unit 5 &middot; Systems</span>
+    <span class="badge unit5" style="opacity:0.7">Exam: Final</span>
+  </div>
+  <h1>Processes</h1>
+  <p class="subtitle">
+    A process is the OS's unit of isolation: an independent, running instance of a program with
+    its own private memory. The strangest — and most tested — idea in this module is
+    <code>fork()</code>, a function that returns <i>twice</i>, once in each of two now-separate
+    processes. We'll walk through real fork-based programs line by line to build the right
+    mental model, then cover reaping children and replacing a process image with <code>exec</code>.
+  </p>
+  <div class="exam-note">
+    <b>CS:APP reference:</b> Chapter 12.1. &nbsp;|&nbsp;
+    This material comes after Game 2 and is tested only on the comprehensive Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Define a process and list what it owns (stack, heap, text, virtual memory, PID)</li>
+  <li>Explain <code>fork()</code>'s "returns twice" semantic and what each return value means</li>
+  <li>Trace the actual output of a real fork-based C program, including ordering caveats</li>
+  <li>Use <code>wait()</code>/<code>waitpid()</code> to reap a child and explain what a zombie process is</li>
+  <li>Explain what the <code>exec</code> family does and how it differs from <code>fork()</code></li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. What is a process?</h2>
+<p>
+  A <b>process</b> is an instance of an executing program: the OS allocates it system
+  resources — a stack, a heap, its program text (code), its own virtual address space, access
+  to shared libraries — and tracks it as one independent, isolated unit. "Isolated" is the key
+  word from the concurrency preview last module: unless a process goes out of its way to share
+  memory through a file or a socket, nothing it does to its own memory is visible to any other
+  process.
+</p>
+<p>
+  Every process has an ID, its <b>PID</b>, and every process (except the very first one the OS
+  boots) has a <b>parent</b> — the process that created it. You can inspect this from the shell
+  with <code>ps</code> (list process info) or <code>pstree</code> (view the parent/child
+  hierarchy), or from inside a running C program with two functions:
+</p>
+<pre><code class="language-c">pid_t getpid(void);   // this process's own PID
+pid_t getppid(void);  // this process's parent's PID</code></pre>
+</section>
+
+<section class="lesson-section">
+<h2>2. <code>fork()</code>: one call, two returns</h2>
+<p>
+  The only way to create a new process is to clone an existing one. <code>fork()</code> does
+  exactly that: it makes a near-exact copy of the calling process — same code, same data, same
+  open files, same program counter position — and that copy becomes a new, independent child
+  process.
+</p>
+<pre><code class="language-c">pid_t fork(void);  // function prototype</code></pre>
+<p>
+  What makes <code>fork()</code> genuinely strange the first time you see it: it is called
+  <i>once</i>, but it <i>returns twice</i> — once in the original (parent) process, and once in
+  the brand-new (child) process, both resuming execution at the exact same point right after
+  the call. The two calls are told apart purely by the return value:
+</p>
+<ul>
+  <li>In the <b>child</b>, <code>fork()</code> returns <code>0</code>.</li>
+  <li>In the <b>parent</b>, <code>fork()</code> returns the child's PID (a positive number).</li>
+  <li>On failure, <code>fork()</code> returns <code>-1</code> and no child is created.</li>
+</ul>
+<pre><code class="language-c">child_pid = fork();
+if (child_pid == 0) {
+    printf("Child: Hi!\n");
+} else {
+    printf("Parent: Hi!\n");
+}</code></pre>
+<p>
+  Each process now has its <i>own</i> independent copy of the stack, data, and heap — from this
+  point on, a variable the child modifies has no effect on the parent's copy, and vice versa.
+  Under the hood, the OS doesn't actually duplicate all that memory up front (that would be
+  the "relatively slow and heavy operation" mentioned in the Concurrency module) — it uses
+  <b>copy-on-write</b>: parent and child initially share the same physical pages, marked
+  read-only, and the OS only makes a private copy of a page at the moment either process tries
+  to write to it. From the programmer's point of view you can and should just reason about it
+  as "each process gets its own full copy" — the copy-on-write trick is a performance
+  optimization, not a change in the semantics.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">What does <code>fork()</code> return inside the newly created child process?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">The child's own PID</button>
+    <button class="quiz-opt" data-correct="true">0</button>
+    <button class="quiz-opt" data-correct="false">The parent's PID</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>The child always gets 0 back from its call to fork(). The parent gets back a positive number — the new child's PID — which is how the parent process can later refer to that specific child (e.g. in <code>waitpid()</code>).</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>3. Tracing a real fork program</h2>
+<p>
+  Here is <code>example2.c</code>, distributed for this course, in full:
+</p>
+<pre><code class="language-c">int main() {
+    pid_t my_pid = getpid();
+    pid_t parent_pid = getppid();
+
+    printf("---- Start of main ----\n");
+    printf("My PID is %d.\n", my_pid);
+    printf("My parent's PID is %d.\n", parent_pid);
+
+    printf("---- Calling fork ----\n");
+    pid_t child_pid = fork();
+
+    if (child_pid == 0) {
+        printf("---- From child ----\n");
+        my_pid = getpid();
+        parent_pid = getppid();
+        printf("My PID is %d.\n", my_pid);
+        printf("My parent's PID is %d.\n", parent_pid);
+    } else {
+        int child_status;
+        wait(&child_status);
+        printf("---- From parent ----\n");
+        printf("My child's PID is %d.\n", child_pid);
+    }
+
+    return 0;
+}</code></pre>
+<p>
+  Walk through it in order: the first three <code>printf</code>s run <i>once</i>, before
+  <code>fork()</code> is ever called — there's only one process alive at that point, so there's
+  only one copy of that output. The moment <code>fork()</code> returns, there are two processes
+  both sitting right after that line, each about to evaluate the same <code>if</code>.
+</p>
+<p>
+  The child takes the <code>child_pid == 0</code> branch and re-reads its own PID and parent
+  PID — and it must re-read them, because the copies of <code>my_pid</code>/<code>parent_pid</code>
+  it inherited from before the fork are stale: they held the <i>parent's</i> PID, not its own.
+  The parent takes the <code>else</code> branch, calls <code>wait()</code> (more on this
+  below), and then prints the child's PID — which it already knew, because <code>fork()</code>
+  handed it back directly as the return value.
+</p>
+<p>
+  So the full output has the three "Start of main" lines exactly once, followed by the
+  "From child" block and the "From parent" block — in <i>that</i> relative order here, because
+  the parent's explicit <code>wait()</code> call forces it to pause until the child has
+  finished and printed its own lines first. Without that <code>wait()</code>, the two blocks
+  could interleave in either order, or even mix line-by-line, because the OS scheduler decides
+  how the parent and child's execution actually interleaves — this is the same "don't assume
+  an order" lesson from the Concurrency module.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">In <code>example2.c</code>, why must the child re-call <code>getpid()</code>/<code>getppid()</code> after <code>fork()</code> instead of reusing <code>my_pid</code>/<code>parent_pid</code> computed before the fork?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false"><code>getpid()</code> can only be called once per process</button>
+    <button class="quiz-opt" data-correct="true">The child inherited copies of those variables holding the parent's PID values from before the fork; they don't automatically update to the child's own identity</button>
+    <button class="quiz-opt" data-correct="false">Variables set before <code>fork()</code> are not copied into the child at all</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>fork() duplicates memory as it existed at the moment of the call — including whatever values were already stored in my_pid and parent_pid. Those held the original process's own PID/parent PID, which is now wrong from the child's perspective, so the child must query the OS again to get its own correct values.</div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>4. Copy-on-write in action: <code>example8.c</code></h2>
+<p>
+  The isolation guarantee — "each process gets its own copy of memory" — is easy to state and
+  easy to doubt until you see it demonstrated. <code>example8.c</code> uses a global variable,
+  <code>data_variable</code>, that the child repeatedly increments in a loop:
+</p>
+<pre><code class="language-c">int data_variable = 1;
+
+int main() {
+    pid_t child_pid;
+
+    switch (child_pid = fork()) {
+    case -1:
+        printf("An error occurred while creating process.\n");
+        return -1;
+
+    case 0:
+        // This means I am the child
+        printf("Child: Hi!\n");
+        for (int i = 0; i < 10; i++) {
+            printf("Child: Doing work... (%d)\n", data_variable++);
+            sleep(1);
+        }
+        return 2;
+
+    default:
+        // This means I am the parent
+        printf("Parent: Hi! Waiting for child to do some work.\n");
+        int child_status;
+        wait(&child_status);
+        printf("Parent: Exit status from child = %d\n", WEXITSTATUS(child_status));
+        printf("Parent: data_variable = %d\n", data_variable);
+        break;
+    }
+
+    return 0;
+}</code></pre>
+<p>
+  The child increments <code>data_variable</code> ten times (1, 2, 3, ... 10) inside its loop.
+  But when the parent finally prints <code>data_variable</code> after the child has exited, it
+  prints <code>1</code> — completely unaffected by everything the child did. That's copy-on-write
+  isolation made visible: the moment the child's first increment touched
+  <code>data_variable</code>, the OS gave the child its own private physical copy of that page,
+  and every further increment happened only in the child's copy. The parent's own copy of
+  <code>data_variable</code> was never touched.
+</p>
+<p>
+  Notice also the <code>switch</code> here is just a different, equally valid way to branch on
+  <code>fork()</code>'s return value compared to the <code>if</code>/<code>else</code> in
+  <code>example2.c</code>: <code>case -1</code> is the error path, <code>case 0</code> is the
+  child, and <code>default</code> (any positive PID) is the parent. And notice
+  <code>return 2;</code> in the child — that becomes the child's exit status, which is exactly
+  what the parent reads back out on the next line.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>5. Reaping children: <code>wait()</code> and zombies</h2>
+<p>
+  When a child process finishes, it doesn't just vanish — the OS keeps its exit status around
+  until the parent collects it. A child that has terminated but hasn't yet been collected by
+  its parent is called a <b>zombie</b>: it's no longer running, but it still occupies an entry
+  in the OS's process table.
+</p>
+<pre><code class="language-c">pid_t wait(int *status);  // function prototype</code></pre>
+<p>
+  Calling <code>wait()</code> from the parent blocks until <i>some</i> child terminates, reaps
+  it (removing its zombie entry), and — if <code>status</code> is non-null — writes back
+  information about how it exited, which macros like <code>WEXITSTATUS()</code> decode into
+  the actual exit code, as seen in <code>example8.c</code> above.
+  <code>waitpid()</code> is the more precise sibling: it can wait on one <i>specific</i> child
+  PID rather than whichever child happens to finish first, which matters once a parent has
+  spawned more than one child and needs to reap them individually.
+</p>
+<div class="callout warn">
+  <b>Why this matters:</b> if a parent never calls <code>wait()</code>/<code>waitpid()</code>
+  on a child that has exited, that child stays a zombie indefinitely, wasting a process-table
+  slot. If the parent itself exits without reaping, the zombie is "adopted" and eventually
+  reaped by the <code>init</code> process — but a long-running parent (like a server) that
+  keeps spawning children without ever reaping them can accumulate zombies until it exhausts
+  the system's process table.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>6. Running a different program: the <code>exec</code> family</h2>
+<p>
+  <code>fork()</code> gives you a second copy of the <i>same</i> program. To actually run a
+  <i>different</i> program in that new process, you follow it with a call from the
+  <code>exec</code> family (<code>execve</code>, <code>execvp</code>, <code>execl</code>, ...).
+  <code>exec</code> replaces the calling process's code, data, heap, and stack with those of a
+  new program, loaded from disk — same PID, same open file descriptors, but everything else
+  about what's running is swapped out. Unlike <code>fork()</code>, <code>exec</code> does not
+  create a new process and does not return on success — if it returns at all, it means loading
+  the new program failed.
+</p>
+<p>
+  Putting <code>fork()</code>, <code>exec()</code>, and <code>wait()</code> together is exactly
+  how a shell works, and the lecture slides for this module say as much directly — you now have
+  enough to sketch your own:
+</p>
+<ol>
+  <li>Read a command line from <code>stdin</code>.</li>
+  <li><code>fork()</code> a child process.</li>
+  <li>In the child, call <code>exec</code> to run the requested program.</li>
+  <li>In the parent, <code>wait()</code> for that child to finish, then go back to step 1.</li>
+</ol>
+<p>
+  This is precisely why a fork/exec pair is so common: <code>fork()</code> gets you a new
+  process to work with, and <code>exec()</code> turns that process into a run of an arbitrary
+  other program — the two functions compose into "run this program and wait for it," which is
+  the fundamental operation every shell performs for every command you type.
+</p>
+
+<div class="quiz">
+  <div class="quiz-q-text">A shell needs to run <code>/bin/ls</code> as a subprocess and keep running afterward itself. Why does it call <code>fork()</code> before <code>exec()</code>, instead of just calling <code>exec()</code> directly?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false"><code>exec()</code> cannot be called without first calling <code>fork()</code>, by definition</button>
+    <button class="quiz-opt" data-correct="true"><code>exec()</code> replaces the calling process's own image; calling it directly from the shell would replace the shell itself with <code>ls</code>, instead of running <code>ls</code> as a separate subprocess</button>
+    <button class="quiz-opt" data-correct="false"><code>fork()</code> is required to allocate a PID before <code>exec()</code> can run</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>exec() doesn't create a new process — it overwrites the current one. If the shell called exec() on ls directly, the shell process itself would turn into ls and never come back. Forking first gives you a disposable child process to exec into, leaving the original shell process (the parent) intact and free to wait() and then prompt for the next command.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../29-concurrency/lesson.html">&larr; 29. Concurrency</a>
+  <a class="next" href="../31-attack-lab/lesson.html">31. Attack Lab &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>
