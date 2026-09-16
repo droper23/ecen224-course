@@ -36,18 +36,28 @@
     </div>
     <div class="meta-card">
       <div class="label">Game 1 &mdash; Midterm 1</div>
-      <div class="value">Opens Oct 12 &middot; closes Oct 16</div>
-      <div class="sub">Covers Units 1&ndash;3 (Data Representation through Intro Assembly)</div>
+      <div class="value">Opens Oct 12 &middot; closes Oct 16, 9:00pm</div>
+      <div class="sub">Covers Units 1&ndash;3 (Data Representation through Intro Assembly) &middot; 100 pts</div>
     </div>
     <div class="meta-card">
       <div class="label">Game 2 &mdash; Midterm 2</div>
-      <div class="value">Opens Nov 9 &middot; closes Nov 13</div>
-      <div class="sub">Covers Unit 4 (x86-64 Assembly &amp; Optimization)</div>
+      <div class="value">Opens Nov 9 &middot; closes Nov 13, 9:00pm</div>
+      <div class="sub">Covers Unit 4 (x86-64 Assembly &amp; Optimization) &middot; 100 pts</div>
     </div>
     <div class="meta-card">
-      <div class="label">Final Exam</div>
-      <div class="value">Dec 12&ndash;17 &middot; Testing Center</div>
-      <div class="sub">Comprehensive &mdash; all units, weighted toward Unit 5</div>
+      <div class="label">Playoff &mdash; Final Exam</div>
+      <div class="value">Dec 12&ndash;17, closes 8:00pm &middot; Testing Center</div>
+      <div class="sub">Comprehensive &mdash; all units, weighted toward Unit 5 &middot; 100 pts (33% of Games)</div>
+    </div>
+    <div class="meta-card">
+      <div class="label">Bomb Programming Assignment</div>
+      <div class="value">Due Nov 20, 11:59pm</div>
+      <div class="sub">Primer: Module 22. Needs Debugging (12) + Assembly Intro&ndash;Control/Data Flow (14&ndash;19)</div>
+    </div>
+    <div class="meta-card">
+      <div class="label">Attack Programming Assignment</div>
+      <div class="value">Due Dec 9, 11:59pm</div>
+      <div class="sub">Primer: Module 31. Needs Buffer Overflow (21) + Assembly Memory (20)</div>
     </div>
   </div>
 
@@ -61,6 +71,10 @@
       <span><span class="dot" style="background:var(--unit4)"></span>Unit 4 &middot; x86-64 Assembly</span>
       <span><span class="dot" style="background:var(--unit5)"></span>Unit 5 &middot; Systems (Final only)</span>
     </div>
+    <div class="legend">
+      <span><span class="assign-badge" style="margin-top:0;">HW#</span> Homework tied to this module, from LearningSuite</span>
+      <span><span class="assign-badge lab" style="margin-top:0;">Lab</span> Programming assignment whose primer this module is</span>
+    </div>
   </div>
 </div>
 
@@ -70,19 +84,19 @@
   <div class="unit-desc">How computers store numbers. Tested on Game 1 and the Final.</div>
   <div class="module-grid">
     <a class="module-card" data-module-id="01-overview" href="modules/01-overview/lesson.html"><span class="check">&check;</span><div class="num">01</div><div class="title">Overview</div><div class="desc">Levels of abstraction, why this course exists, the "great realities."</div></a>
-    <a class="module-card" data-module-id="02-information-storage" href="modules/02-information-storage/lesson.html"><span class="check">&check;</span><div class="num">02</div><div class="title">Information Storage</div><div class="desc">Bits, hex, byte ordering, bitwise operators.</div></a>
-    <a class="module-card" data-module-id="03-integer-representations" href="modules/03-integer-representations/lesson.html"><span class="check">&check;</span><div class="num">03</div><div class="title">Integer Representations</div><div class="desc">Unsigned vs two's complement, sign extension, casting gotchas.</div></a>
-    <a class="module-card" data-module-id="04-integer-arithmetic" href="modules/04-integer-arithmetic/lesson.html"><span class="check">&check;</span><div class="num">04</div><div class="title">Integer Arithmetic</div><div class="desc">Overflow, wraparound, multiply/divide by shifting.</div></a>
-    <a class="module-card" data-module-id="05-floating-point" href="modules/05-floating-point/lesson.html"><span class="check">&check;</span><div class="num">05</div><div class="title">Floating Point</div><div class="desc">IEEE 754, normalized/denormalized, why float math isn't exact.</div></a>
+    <a class="module-card" data-module-id="02-information-storage" href="modules/02-information-storage/lesson.html"><span class="check">&check;</span><div class="num">02</div><div class="title">Information Storage</div><div class="desc">Bits, hex, byte ordering, bitwise operators.</div><span class="assign-badge done">HW1 &middot; scored 26/28</span></a>
+    <a class="module-card" data-module-id="03-integer-representations" href="modules/03-integer-representations/lesson.html"><span class="check">&check;</span><div class="num">03</div><div class="title">Integer Representations</div><div class="desc">Unsigned vs two's complement, sign extension, casting gotchas.</div><span class="assign-badge">HW2 &middot; due Sep 18</span></a>
+    <a class="module-card" data-module-id="04-integer-arithmetic" href="modules/04-integer-arithmetic/lesson.html"><span class="check">&check;</span><div class="num">04</div><div class="title">Integer Arithmetic</div><div class="desc">Overflow, wraparound, multiply/divide by shifting.</div><span class="assign-badge">HW3 &middot; due Sep 21</span></a>
+    <a class="module-card" data-module-id="05-floating-point" href="modules/05-floating-point/lesson.html"><span class="check">&check;</span><div class="num">05</div><div class="title">Floating Point</div><div class="desc">IEEE 754, normalized/denormalized, why float math isn't exact.</div><span class="assign-badge">HW4 &middot; due Sep 23</span></a>
   </div>
 
   <div class="unit-title"><span class="badge unit2">Unit 2</span> C Programming</div>
   <div class="unit-desc">The language you'll be reading straight through to assembly. Tested on Game 1 and the Final.</div>
   <div class="module-grid">
-    <a class="module-card" data-module-id="06-c-overview-and-variables" href="modules/06-c-overview-and-variables/lesson.html"><span class="check">&check;</span><div class="num">06</div><div class="title">C Overview &amp; Variables</div><div class="desc">Why C, the compile pipeline, types and scope.</div></a>
-    <a class="module-card" data-module-id="07-c-io" href="modules/07-c-io/lesson.html"><span class="check">&check;</span><div class="num">07</div><div class="title">C I/O</div><div class="desc">printf/scanf, format specifiers, common mistakes.</div></a>
-    <a class="module-card" data-module-id="08-c-operators" href="modules/08-c-operators/lesson.html"><span class="check">&check;</span><div class="num">08</div><div class="title">C Operators</div><div class="desc">Precedence, pre/post increment, short-circuit evaluation.</div></a>
-    <a class="module-card" data-module-id="09-c-arrays-strings-structs" href="modules/09-c-arrays-strings-structs/lesson.html"><span class="check">&check;</span><div class="num">09</div><div class="title">Arrays, Strings &amp; Structs</div><div class="desc">Contiguous memory, null-terminated strings, struct layout.</div></a>
+    <a class="module-card" data-module-id="06-c-overview-and-variables" href="modules/06-c-overview-and-variables/lesson.html"><span class="check">&check;</span><div class="num">06</div><div class="title">C Overview &amp; Variables</div><div class="desc">Why C, the compile pipeline, types and scope.</div><span class="assign-badge">HW5 &middot; due Sep 25</span></a>
+    <a class="module-card" data-module-id="07-c-io" href="modules/07-c-io/lesson.html"><span class="check">&check;</span><div class="num">07</div><div class="title">C I/O</div><div class="desc">printf/scanf, format specifiers, common mistakes.</div><span class="assign-badge">HW6 &middot; due Sep 28</span></a>
+    <a class="module-card" data-module-id="08-c-operators" href="modules/08-c-operators/lesson.html"><span class="check">&check;</span><div class="num">08</div><div class="title">C Operators</div><div class="desc">Precedence, pre/post increment, short-circuit evaluation.</div><span class="assign-badge">HW7 &middot; due Sep 30</span></a>
+    <a class="module-card" data-module-id="09-c-arrays-strings-structs" href="modules/09-c-arrays-strings-structs/lesson.html"><span class="check">&check;</span><div class="num">09</div><div class="title">Arrays, Strings &amp; Structs</div><div class="desc">Contiguous memory, null-terminated strings, struct layout.</div><span class="assign-badge">HW8 &middot; due Oct 2</span></a>
     <a class="module-card" data-module-id="10-c-pointers" href="modules/10-c-pointers/lesson.html"><span class="check">&check;</span><div class="num">10</div><div class="title">C Pointers</div><div class="desc">Addresses, pointer arithmetic, pass-by-reference.</div></a>
     <a class="module-card" data-module-id="11-c-flow-control-and-functions" href="modules/11-c-flow-control-and-functions/lesson.html"><span class="check">&check;</span><div class="num">11</div><div class="title">Flow Control &amp; Functions</div><div class="desc">Loops, switch, recursion, the stack-frame intuition.</div></a>
   </div>
@@ -105,7 +119,7 @@
     <a class="module-card" data-module-id="19-assembly-control-and-data-flow" href="modules/19-assembly-control-and-data-flow/lesson.html"><span class="check">&check;</span><div class="num">19</div><div class="title">Control &amp; Data Flow</div><div class="desc">call/ret, argument-passing registers, stack frames.</div></a>
     <a class="module-card" data-module-id="20-assembly-memory" href="modules/20-assembly-memory/lesson.html"><span class="check">&check;</span><div class="num">20</div><div class="title">Memory Management</div><div class="desc">Process memory layout: stack, heap, data, text.</div></a>
     <a class="module-card" data-module-id="21-assembly-buffer-overflow" href="modules/21-assembly-buffer-overflow/lesson.html"><span class="check">&check;</span><div class="num">21</div><div class="title">Buffer Overflow</div><div class="desc">Stack smashing and how mitigations defend against it.</div></a>
-    <a class="module-card" data-module-id="22-binary-bomb-lab" href="modules/22-binary-bomb-lab/lesson.html"><span class="check">&check;</span><div class="num">22</div><div class="title">Binary Bomb Lab</div><div class="desc">Strategy primer for the reverse-engineering assignment.</div></a>
+    <a class="module-card" data-module-id="22-binary-bomb-lab" href="modules/22-binary-bomb-lab/lesson.html"><span class="check">&check;</span><div class="num">22</div><div class="title">Binary Bomb Lab</div><div class="desc">Strategy primer for the reverse-engineering assignment.</div><span class="assign-badge lab">Bomb Lab &middot; due Nov 20 &middot; 70 pts</span><span class="assign-note">Also draws on: Debugging (12), Assembly Intro&ndash;Control/Data Flow (14&ndash;19)</span></a>
     <a class="module-card" data-module-id="23-optimization" href="modules/23-optimization/lesson.html"><span class="check">&check;</span><div class="num">23</div><div class="title">Optimization</div><div class="desc">-O levels, loop unrolling, why -O0 reads more literally.</div></a>
   </div>
 
@@ -119,7 +133,7 @@
     <a class="module-card" data-module-id="28-socket-programming" href="modules/28-socket-programming/lesson.html"><span class="check">&check;</span><div class="num">28</div><div class="title">Socket Programming</div><div class="desc">socket/bind/listen/accept, with real client.c/server.c.</div></a>
     <a class="module-card" data-module-id="29-concurrency" href="modules/29-concurrency/lesson.html"><span class="check">&check;</span><div class="num">29</div><div class="title">Concurrency</div><div class="desc">Processes vs threads vs event-driven, race conditions.</div></a>
     <a class="module-card" data-module-id="30-processes" href="modules/30-processes/lesson.html"><span class="check">&check;</span><div class="num">30</div><div class="title">Processes</div><div class="desc">fork(), wait(), exec(), with real example code.</div></a>
-    <a class="module-card" data-module-id="31-attack-lab" href="modules/31-attack-lab/lesson.html"><span class="check">&check;</span><div class="num">31</div><div class="title">Attack Lab</div><div class="desc">Strategy primer connecting back to Buffer Overflow.</div></a>
+    <a class="module-card" data-module-id="31-attack-lab" href="modules/31-attack-lab/lesson.html"><span class="check">&check;</span><div class="num">31</div><div class="title">Attack Lab</div><div class="desc">Strategy primer connecting back to Buffer Overflow.</div><span class="assign-badge lab">Attack Lab &middot; due Dec 9 &middot; 95 pts</span><span class="assign-note">Also draws on: Buffer Overflow (21), Assembly Memory (20)</span></a>
     <a class="module-card" data-module-id="32-threads" href="modules/32-threads/lesson.html"><span class="check">&check;</span><div class="num">32</div><div class="title">Threads</div><div class="desc">pthread_create/join, shared memory, mutexes.</div></a>
   </div>
 
