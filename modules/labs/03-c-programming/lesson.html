@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>03 — C Programming Lab (Part 1) | ECEn 224</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="lab-03-c-programming">
+
+<div class="topbar">
+  <a class="back" href="../../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Lab 2 of 10</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit6">Unit 6 &middot; Weekly Labs</span>
+    <span class="badge unit6" style="opacity:0.7">TA pass-off + quiz</span>
+  </div>
+  <h1>C Programming Lab &mdash; Part 1</h1>
+  <p class="subtitle">
+    Your first real C program, taken apart stage by stage. Instead of just running
+    <code>gcc simple.c</code> and moving on, this lab walks <code>gcc</code>'s four stages
+    &mdash; preprocessing, compiling, assembling, linking &mdash; one command at a time, so you
+    can inspect the intermediate output of each. The back half is a small challenge program that
+    forces you to actually use C's native data types and <code>printf</code> format specifiers
+    instead of just reading about them.
+  </p>
+  <div class="exam-note">
+    <b>Tested on:</b> the compilation pipeline is exactly Module 13 (Linking) material, and the
+    data-type/casting content is directly tested on Game 1 and the Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<div class="callout">
+  <b>Official lab page:</b> This primer covers the concepts &mdash; for exact CAEDM setup steps,
+  starter code, and the TA pass-off checklist, use the official page:
+  <a href="https://byu-cpe.github.io/ecen224/labs/03_c-programming/" target="_blank" rel="noopener">byu-cpe.github.io/ecen224/labs/03_c-programming</a>.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Compile a C program with <code>gcc</code> and name its output with <code>-o</code></li>
+  <li>Explain what each of the four compilation stages produces: preprocessed source, assembly, object code, and a linked executable</li>
+  <li>Identify C's native data types by size and describe what determines their range</li>
+  <li>Explain explicit vs. implicit casting, and why casting into a too-small type produces unexpected values</li>
+  <li>Use <code>printf</code> format specifiers correctly for different data types</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. The four stages of <code>gcc</code></h2>
+<p>
+  Running <code>gcc simple.c</code> hides four distinct steps behind one command. This lab has
+  you run each one separately so you can see what each stage actually produces &mdash; the same
+  pipeline Module 13 (Linking) covers, but here you're driving it by hand.
+</p>
+<div class="flow">
+  <div class="flow-step">Preprocess<br><code>gcc -E</code></div>
+  <span class="flow-arrow">&rarr;</span>
+  <div class="flow-step">Compile<br><code>gcc -S</code></div>
+  <span class="flow-arrow">&rarr;</span>
+  <div class="flow-step">Assemble<br><code>gcc -c</code></div>
+  <span class="flow-arrow">&rarr;</span>
+  <div class="flow-step">Link<br><code>gcc file.o</code></div>
+</div>
+<table>
+  <tr><th>Stage</th><th>Command</th><th>What you get</th></tr>
+  <tr><td>Preprocessing</td><td><code>gcc -E simple.c &gt; simple_preprocessed.txt</code></td><td>Source with <code>#include</code>/<code>#define</code> directives expanded &mdash; still C, but flattened</td></tr>
+  <tr><td>Compiling</td><td><code>gcc -S simple.c</code></td><td><code>simple.s</code>: x86 assembly, the same kind of output you'll read starting in Unit 4</td></tr>
+  <tr><td>Assembling</td><td><code>gcc -c simple.c</code></td><td><code>simple.o</code>: machine code/opcodes in object-file segments, not yet a runnable program</td></tr>
+  <tr><td>Linking</td><td><code>gcc simple.c</code> (or <code>gcc simple.c -o simple</code>)</td><td><code>a.out</code> (or your named executable): <code>.o</code> files merged with library code like <code>stdio.o</code>, external references resolved</td></tr>
+</table>
+<p>
+  Two things worth actually looking at: open <code>simple.s</code> and find one instruction you
+  don't recognize yet, and <code>hexdump simple.o</code> to see that an object file isn't a flat
+  blob &mdash; it's organized into segments (code, data) the linker later stitches together.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. Native data types</h2>
+<table>
+  <tr><th>Type</th><th>Size</th><th>Stores</th></tr>
+  <tr><td><code>char</code></td><td>1 byte</td><td>integer (also used for characters)</td></tr>
+  <tr><td><code>short</code></td><td>2 bytes</td><td>integer</td></tr>
+  <tr><td><code>int</code></td><td>4 bytes</td><td>integer</td></tr>
+  <tr><td><code>long</code></td><td>8 bytes</td><td>integer</td></tr>
+  <tr><td><code>float</code></td><td>4 bytes</td><td>decimal (IEEE floating point)</td></tr>
+  <tr><td><code>double</code></td><td>8 bytes</td><td>decimal, more precision than <code>float</code></td></tr>
+</table>
+<p>
+  Bit width sets the range: an <code>N</code>-bit unsigned type holds <code>0</code> to
+  <code>2<sup>N</sup>-1</code>; signed two's-complement holds <code>-2<sup>N-1</sup></code> to
+  <code>2<sup>N-1</sup>-1</code> (see Module 03 &mdash; Integer Representations).
+  <code>unsigned</code> trades the negative half of the range for a doubled positive range.
+  These sizes are processor-dependent, not guaranteed by the language &mdash; the lab's own
+  warning example is the Ariane 5 rocket explosion, caused by an oversized value forced into too
+  small a type.
+</p>
+<div class="callout warn">
+  <b>Casting risk:</b> casting a value that doesn't fit the destination type produces silently
+  wrong results, not an error. <code>(char)(short)400</code> becomes <code>-112</code>, not
+  <code>400</code> or a compile error &mdash; the extra bits just get truncated. Implicit casts
+  (the compiler converting for you, with no explicit <code>(type)</code> in sight) are the
+  dangerous ones, because there's no visual cue that a conversion happened at all.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>3. <code>printf</code> format specifiers</h2>
+<table>
+  <tr><th>Specifier</th><th>Meaning</th></tr>
+  <tr><td><code>%d</code> / <code>%i</code></td><td>signed decimal integer</td></tr>
+  <tr><td><code>%u</code></td><td>unsigned decimal integer</td></tr>
+  <tr><td><code>%x</code></td><td>hexadecimal</td></tr>
+  <tr><td><code>%o</code></td><td>octal</td></tr>
+  <tr><td><code>%f</code></td><td>floating point</td></tr>
+  <tr><td><code>%e</code></td><td>exponential floating point</td></tr>
+  <tr><td><code>%c</code></td><td>character</td></tr>
+  <tr><td><code>%s</code></td><td>string</td></tr>
+  <tr><td><code>%%</code></td><td>literal percent sign</td></tr>
+</table>
+<p>
+  The lab challenge (<code>data.c</code>) requires printing a <code>uint8_t</code> as its
+  <code>char</code> equivalent, printing an <code>unsigned int</code> in hex, and using at least
+  five different specifier types across separate <code>printf</code> calls &mdash; deliberately
+  forcing you past just <code>%d</code> everywhere. It also asks you to try a format specifier
+  in a way that "shouldn't" work, observe what actually happens, and explain it in a comment
+  &mdash; the point being that mismatched specifiers don't reliably crash, they just read the
+  wrong number of bytes off the stack and print garbage.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>4. Skills you'll need</h2>
+<ul>
+  <li><a href="../../06-c-overview-and-variables/lesson.html">Module 06 &mdash; C Overview &amp; Variables</a>: the compile pipeline and basic types this lab walks through by hand.</li>
+  <li><a href="../../07-c-io/lesson.html">Module 07 &mdash; C I/O</a>: <code>printf</code> and format specifiers.</li>
+  <li><a href="../../08-c-operators/lesson.html">Module 08 &mdash; C Operators</a>: casting and type conversion.</li>
+  <li><a href="../02-command-line/lesson.html">Lab 02 &mdash; Command Line</a>: comfort running multi-step terminal commands is assumed here.</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<div class="quiz">
+  <div class="quiz-q-text">You cast the <code>short</code> value <code>400</code> down to a <code>char</code> and get <code>-112</code> instead of <code>400</code>. What happened?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">This is a compiler bug</button>
+    <button class="quiz-opt" data-correct="true">The extra high-order bits were truncated to fit 8 bits, and the remaining bit pattern is interpreted as a negative two's-complement value</button>
+    <button class="quiz-opt" data-correct="false"><code>char</code> cannot hold numeric values at all, only letters</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>400 doesn't fit in a signed 8-bit range (-128 to 127). Casting down truncates the extra bits rather than erroring, and whatever bit pattern is left over gets reinterpreted under two's complement &mdash; here, that pattern happens to represent -112.</div>
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text">Which stage of <code>gcc</code>'s pipeline produces human-readable x86 assembly you can open in a text editor?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">Preprocessing (<code>gcc -E</code>)</button>
+    <button class="quiz-opt" data-correct="true">Compiling (<code>gcc -S</code>)</button>
+    <button class="quiz-opt" data-correct="false">Assembling (<code>gcc -c</code>)</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span><code>gcc -S</code> stops right after translating C into assembly and writes it out as text (<code>simple.s</code>). Assembling (<code>-c</code>) turns that into binary machine code in an object file, which is no longer readable as text.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../02-command-line/lesson.html">&larr; 02. Command Line</a>
+  <a class="next" href="../04-data-types-and-strings/lesson.html">04. Data Types &amp; Strings &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../../assets/quiz.js"></script>
+</body>
+</html>

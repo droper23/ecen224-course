@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>09 — Client Lab | ECEn 224</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="lab-09-client">
+
+<div class="topbar">
+  <a class="back" href="../../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Lab 8 of 10</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit6">Unit 6 &middot; Weekly Labs</span>
+    <span class="badge unit6" style="opacity:0.7">TA pass-off + quiz</span>
+  </div>
+  <h1>Client Lab</h1>
+  <p class="subtitle">
+    Sends the picture you just captured across the network: open a TCP socket to a grading server,
+    pack a homework ID and raw image bytes into one buffer with no delimiter between them, and push
+    it through <code>send()</code> &mdash; which, unlike <code>fwrite</code>, never promises to
+    take everything in one call.
+  </p>
+  <div class="exam-note">
+    <b>Tested on:</b> hands-on CAEDM work, not itself graded exam content &mdash; but sockets and
+    byte-buffer framing are core Unit 5 material tested on the Final.
+  </div>
+</div>
+
+<main>
+
+<div class="callout">
+  <b>Official lab page:</b> This primer covers the concepts &mdash; for exact CAEDM setup steps,
+  starter code, and the TA pass-off checklist, use the official page:
+  <a href="https://byu-cpe.github.io/ecen224/labs/09_client/" target="_blank" rel="noopener">byu-cpe.github.io/ecen224/labs/09_client</a>.
+</div>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Explain why a socket is opened, written to, and closed like a file &mdash; and where that analogy breaks down</li>
+  <li>Pack two pieces of data (an ID and an image buffer) into one contiguous send buffer with <code>memcpy</code></li>
+  <li>Write a loop around <code>send()</code> that keeps sending until everything is actually transmitted</li>
+  <li>Read a <code>Config</code> struct populated with connection and payload details</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. A socket is "mostly" a file descriptor</h2>
+<p>
+  This lab is deliberately light on new networking theory &mdash; Computer Networks and Socket
+  Programming already covered <code>socket()</code>/<code>connect()</code>/<code>send()</code>/
+  <code>recv()</code>. What's new here is using them for real, against a real server
+  (<code>ecen224.byu.edu:2240</code>, campus network only), with a payload that isn't a simple
+  string. <code>client_connect()</code> is provided and returns a socket the same way
+  <code>fopen()</code> returns a <code>FILE *</code>: from here on, most operations on it look
+  like file I/O.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. Building one buffer out of two pieces of data</h2>
+<p>
+  The protocol here is intentionally minimal: the homework ID followed immediately by the raw image
+  bytes, <b>with no null terminator or separator between them</b>. That rules out
+  string-concatenation approaches (<code>strcat</code> would stop at the first <code>0x00</code>
+  byte it finds inside the image data, silently truncating it). The correct approach is the same
+  one you'd use to build any binary packet: allocate a buffer sized to hold both pieces, then
+  <code>memcpy</code> each piece into its offset.
+</p>
+<pre><code class="language-c">uint8_t *payload = malloc(id_len + image_len);
+memcpy(payload, hw_id, id_len);
+memcpy(payload + id_len, image_data, image_len);
+</code></pre>
+<div class="callout warn">
+  <b>Watch for:</b> treating the image bytes as a C string anywhere in this pipeline. Image data is
+  binary &mdash; it can and will contain <code>0x00</code> bytes that are not the end of the
+  buffer. Track lengths explicitly; never rely on a null terminator to know where the image data
+  ends.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>3. <code>send()</code> doesn't promise to finish the job</h2>
+<p>
+  <code>send()</code> "always tries to send all the data you give it," but the return value tells
+  you how many bytes actually went out &mdash; which can be less than what you asked for, and isn't
+  an error. <code>client_send_image()</code> has to loop: send, check the return value, advance a
+  pointer/offset by however many bytes actually went, and keep going until everything's been sent
+  or <code>send()</code> returns a genuine error (negative).
+</p>
+<pre><code class="language-c">size_t sent = 0;
+while (sent < total_len) {
+    ssize_t n = send(sockfd, payload + sent, total_len - sent, 0);
+    if (n < 0) { /* real error: bail out */ break; }
+    sent += (size_t)n;
+}
+</code></pre>
+</section>
+
+<section class="lesson-section">
+<h2>Skills you'll need</h2>
+<ul>
+  <li><a href="../../27-computer-networks/lesson.html">Module 27 &mdash; Computer Networks</a> &mdash; IP addresses, ports, TCP vs. UDP.</li>
+  <li><a href="../../28-socket-programming/lesson.html">Module 28 &mdash; Socket Programming</a> &mdash; <code>socket</code>/<code>connect</code>/<code>send</code>/<code>recv</code>, with the same client.c you'll be extending here.</li>
+</ul>
+</section>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why can't you build the ID+image payload with <code>strcat</code>?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false"><code>strcat</code> doesn't exist in the standard library used on the lab hardware</button>
+    <button class="quiz-opt" data-correct="true">Image data is binary and can contain <code>0x00</code> bytes, which <code>strcat</code> would treat as the end of the string</button>
+    <button class="quiz-opt" data-correct="false"><code>strcat</code> can only append to buffers allocated with <code>calloc</code></button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span><code>strcat</code> stops at the first null byte. Image data isn't text and will contain <code>0x00</code> bytes throughout, so string functions would silently truncate the payload. <code>memcpy</code> with explicit lengths is the correct tool.</div>
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text"><code>send()</code> returns a value less than the number of bytes you asked it to send, and no error occurred. What should <code>client_send_image()</code> do?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">Treat it as a fatal error and close the connection immediately</button>
+    <button class="quiz-opt" data-correct="true">Advance the buffer offset by the number of bytes actually sent and call <code>send()</code> again for the remainder</button>
+    <button class="quiz-opt" data-correct="false">Resend the entire buffer from the beginning</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>A partial send is normal, not an error. The correct pattern is a loop that tracks how much has been sent so far and keeps calling <code>send()</code> with the remaining bytes until the whole payload is out.</div>
+</div>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../08-camera/lesson.html">&larr; 08. Camera</a>
+  <a class="next" href="../10-threaded-client/lesson.html">10. Threaded Client &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../../assets/quiz.js"></script>
+</body>
+</html>

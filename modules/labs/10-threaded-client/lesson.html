@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>10 — Threaded Client Lab | ECEn 224</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="lab-10-threaded-client">
+
+<div class="topbar">
+  <a class="back" href="../../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Lab 9 of 10</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit6">Unit 6 &middot; Weekly Labs</span>
+    <span class="badge unit6" style="opacity:0.7">TA pass-off + quiz</span>
+  </div>
+  <h1>Threaded Client Lab</h1>
+  <p class="subtitle">
+    Moves the slow network upload from the Client lab off the main loop and onto a POSIX thread, so
+    the doorbell's menu stays responsive while a photo is sending &mdash; plus a status bar that has
+    to reflect thread progress without ever calling display code from inside the thread itself.
+  </p>
+  <div class="exam-note">
+    <b>Tested on:</b> hands-on CAEDM work, not itself graded exam content &mdash; but
+    <code>pthread_create</code>, shared state between threads, and stack-vs-heap lifetime are
+    directly tested on the Final.
+  </div>
+</div>
+
+<main>
+
+<div class="callout">
+  <b>Official lab page:</b> This primer covers the concepts &mdash; for exact CAEDM setup steps,
+  starter code, and the TA pass-off checklist, use the official page:
+  <a href="https://byu-cpe.github.io/ecen224/labs/10_threaded-client/" target="_blank" rel="noopener">byu-cpe.github.io/ecen224/labs/10_threaded-client</a>.
+</div>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Explain why a blocking network call on the main loop freezes the whole UI</li>
+  <li>Spawn a <code>pthread_create</code> thread that runs a function taking a <code>void *</code> argument</li>
+  <li>Identify why data passed into a thread must outlive the stack frame that launched it</li>
+  <li>Track a background thread's progress with shared state, without calling non-thread-safe display code from inside the thread</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. The bug you're fixing: everything blocks on everything</h2>
+<p>
+  Run <code>send_image</code> directly from the button handler, before threading it, and you'll see
+  the problem the lab wants you to feel: the menu freezes for as long as the upload takes. That's
+  because a single-threaded program can only be doing one thing at a time &mdash; while
+  <code>send()</code>/<code>recv()</code> block waiting on the network, nothing else in the process,
+  including the code that redraws the screen or reads button input, gets to run at all.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. <code>pthread_create</code> and the <code>void *</code> contract</h2>
+<p>
+  Threading fixes this by giving the upload its own thread of execution, separate from the main
+  loop. <code>pthread_create</code> takes four arguments: a <code>pthread_t *</code> to write the
+  new thread's ID into, an attributes pointer (<code>NULL</code> for this course), a function
+  pointer for the thread to run, and a <code>void *</code> argument passed straight through to that
+  function. The <code>void *</code> is how you hand the thread whatever it needs (host, port,
+  image buffer, length) as one bundled struct, cast back to its real type on the other side.
+</p>
+<div class="callout warn">
+  <b>Watch for:</b> passing the address of a local (stack) variable into
+  <code>pthread_create</code> and then letting the calling function return. The thread may still be
+  running against that address after the stack frame that owned it is gone &mdash; a classic
+  use-after-free-shaped bug. Heap-allocate (or use file-scope/global storage for) anything a thread
+  needs to keep using.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>3. Progress without touching the display from the thread</h2>
+<p>
+  The lab is explicit: <b>don't call display functions from inside the thread.</b> The display API
+  isn't thread-safe, so drawing has to stay on the main loop. The pattern that satisfies both
+  constraints is a shared state variable the thread updates (e.g. an enum: idle &rarr; sending
+  &rarr; sent) and the main loop polls every frame to decide what the status bar should currently
+  show and for how long.
+</p>
+<div class="flow">
+  <div class="flow-step">Button press<br>spawns thread</div>
+  <span class="flow-arrow">&rarr;</span>
+  <div class="flow-step">Thread<br>sends image,<br>sets state = SENT</div>
+  <span class="flow-arrow">&rarr;</span>
+  <div class="flow-step">Main loop<br>polls state,<br>draws status bar</div>
+</div>
+<p>
+  <code>pthread_join()</code> exists for retrieving a thread's return value, but the lab
+  specifically avoids it here &mdash; joining would block the caller until the thread finishes,
+  which defeats the entire point of moving the upload off the main loop in the first place.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>Skills you'll need</h2>
+<ul>
+  <li><a href="../../28-socket-programming/lesson.html">Module 28 &mdash; Socket Programming</a> &mdash; the <code>send_image</code> logic this lab threads.</li>
+  <li><a href="../../29-concurrency/lesson.html">Module 29 &mdash; Concurrency</a> &mdash; why blocking I/O on one thread stalls the whole program.</li>
+  <li><a href="../../32-threads/lesson.html">Module 32 &mdash; Threads</a> &mdash; <code>pthread_create</code>, shared memory, and the stack-lifetime pitfalls this lab hits directly.</li>
+  <li><a href="../09-client/lesson.html">09. Client</a> &mdash; the single-threaded <code>send_image</code> you're converting here.</li>
+</ul>
+</section>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why does the lab explicitly avoid <code>pthread_join()</code> right after spawning the upload thread?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false"><code>pthread_join()</code> isn't available on the doorbell hardware</button>
+    <button class="quiz-opt" data-correct="true">Joining blocks the caller until the thread finishes, which would freeze the menu again &mdash; the exact problem threading was meant to fix</button>
+    <button class="quiz-opt" data-correct="false"><code>pthread_join()</code> can only be called on threads that pass a <code>NULL</code> argument</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span><code>pthread_join()</code> waits for the target thread to finish before returning. Calling it right after <code>pthread_create()</code> would re-introduce the blocking behavior the lab is trying to eliminate.</div>
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text">A function running on the upload thread wants to update the on-screen status bar directly. What's wrong with that?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="true">Display functions aren't thread-safe; the thread should update shared state and let the main loop do the actual drawing</button>
+    <button class="quiz-opt" data-correct="false">Nothing &mdash; any thread may call any function at any time in this project</button>
+    <button class="quiz-opt" data-correct="false">It would work, but only if <code>pthread_join()</code> is called first</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>The lab is explicit that display functions must not be called from inside the thread. The safe pattern is the thread setting a shared status variable and the main loop reading it each frame to decide what to draw.</div>
+</div>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../09-client/lesson.html">&larr; 09. Client</a>
+  <a class="next" href="../11-doorbell/lesson.html">11. Doorbell &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../../assets/quiz.js"></script>
+</body>
+</html>

@@ -63,17 +63,18 @@
 
   <div class="progress-wrap" style="padding:0;">
     <div class="progress-track"><div class="progress-fill" id="progressBarFill"></div></div>
-    <div id="progressCounter">0 / 32 modules completed</div>
+    <div id="progressCounter">0 / 42 modules completed</div>
     <div class="legend">
       <span><span class="dot" style="background:var(--unit1)"></span>Unit 1 &middot; Data Representation</span>
       <span><span class="dot" style="background:var(--unit2)"></span>Unit 2 &middot; C Programming</span>
       <span><span class="dot" style="background:var(--unit3)"></span>Unit 3 &middot; Debugging, Linking &amp; Intro Assembly</span>
       <span><span class="dot" style="background:var(--unit4)"></span>Unit 4 &middot; x86-64 Assembly</span>
       <span><span class="dot" style="background:var(--unit5)"></span>Unit 5 &middot; Systems (Final only)</span>
+      <span><span class="dot" style="background:var(--unit6)"></span>Unit 6 &middot; Weekly Labs (CAEDM, hands-on)</span>
     </div>
     <div class="legend">
       <span><span class="assign-badge" style="margin-top:0;">HW#</span> Homework tied to this module, from LearningSuite</span>
-      <span><span class="assign-badge lab" style="margin-top:0;">Lab</span> Programming assignment whose primer this module is</span>
+      <span><span class="assign-badge lab" style="margin-top:0;">Lab</span> Lab or programming assignment whose primer this module is</span>
     </div>
   </div>
 </div>
@@ -135,6 +136,28 @@
     <a class="module-card" data-module-id="30-processes" href="modules/30-processes/lesson.html"><span class="check">&check;</span><div class="num">30</div><div class="title">Processes</div><div class="desc">fork(), wait(), exec(), with real example code.</div></a>
     <a class="module-card" data-module-id="31-attack-lab" href="modules/31-attack-lab/lesson.html"><span class="check">&check;</span><div class="num">31</div><div class="title">Attack Lab</div><div class="desc">Strategy primer connecting back to Buffer Overflow.</div><span class="assign-badge lab">Attack Lab &middot; due Dec 9 &middot; 95 pts</span><span class="assign-note">Also draws on: Buffer Overflow (21), Assembly Memory (20)</span></a>
     <a class="module-card" data-module-id="32-threads" href="modules/32-threads/lesson.html"><span class="check">&check;</span><div class="num">32</div><div class="title">Threads</div><div class="desc">pthread_create/join, shared memory, mutexes.</div></a>
+  </div>
+
+  <div class="unit-title"><span class="badge unit6">Unit 6</span> Weekly Labs</div>
+  <div class="unit-desc">
+    The hands-on CAEDM track: ten weekly labs that build, piece by piece, into a working
+    smart-doorbell appliance (camera, display, file browser, network upload, threading).
+    These pages are primers on the underlying concepts and skills, not a replacement for the
+    official lab &mdash; always use <a href="https://byu-cpe.github.io/ecen224/labs" target="_blank" rel="noopener">byu-cpe.github.io/ecen224/labs</a>
+    for exact CAEDM setup, starter code, and TA pass-off steps. Not directly tested on the Games,
+    but the C/systems skill they build is.
+  </div>
+  <div class="module-grid">
+    <a class="module-card" data-module-id="lab-02-command-line" href="modules/labs/02-command-line/lesson.html"><span class="check">&check;</span><div class="num">Lab 02</div><div class="title">Command Line</div><div class="desc">Terminal navigation, tab completion, env vars, and a shell challenge.</div><span class="assign-badge lab">TA pass-off + quiz</span></a>
+    <a class="module-card" data-module-id="lab-03-c-programming" href="modules/labs/03-c-programming/lesson.html"><span class="check">&check;</span><div class="num">Lab 03</div><div class="title">C Programming, Part 1</div><div class="desc">gcc's preprocess/compile/assemble/link pipeline, native types, printf.</div><span class="assign-badge lab">TA pass-off + quiz</span><span class="assign-note">Builds on: C Overview (06), C I/O (07), Operators (08)</span></a>
+    <a class="module-card" data-module-id="lab-04-data-types-and-strings" href="modules/labs/04-data-types-and-strings/lesson.html"><span class="check">&check;</span><div class="num">Lab 04</div><div class="title">Data Types &amp; Strings</div><div class="desc">Overflow, sign/zero extension, C strings, the local-array pointer bug.</div><span class="assign-badge lab">TA pass-off + quiz</span><span class="assign-note">Builds on: Info Storage (02), Arrays/Strings/Structs (09), Pointers (10)</span></a>
+    <a class="module-card" data-module-id="lab-05-image" href="modules/labs/05-image/lesson.html"><span class="check">&check;</span><div class="num">Lab 05</div><div class="title">Image</div><div class="desc">Write image-processing functions in C over a flat BMP byte buffer.</div><span class="assign-badge lab">TA pass-off + quiz</span><span class="assign-note">Builds on: Arrays/Strings/Structs (09), Pointers (10), Dynamic Memory (26)</span></a>
+    <a class="module-card" data-module-id="lab-06-display" href="modules/labs/06-display/lesson.html"><span class="check">&check;</span><div class="num">Lab 06</div><div class="title">Display</div><div class="desc">Draw to a real LCD + button HAT and build a selectable menu.</div><span class="assign-badge lab">TA pass-off + quiz</span><span class="assign-note">Builds on: Info Storage (02), Arrays/Strings/Structs (09), Pointers (10)</span></a>
+    <a class="module-card" data-module-id="lab-07-file" href="modules/labs/07-file/lesson.html"><span class="check">&check;</span><div class="num">Lab 07</div><div class="title">File</div><div class="desc">Scan a folder, filter .bmp/.log files, browse them on the LCD.</div><span class="assign-badge lab">TA pass-off + quiz</span><span class="assign-note">Builds on: C I/O (07), Pointers (10)</span></a>
+    <a class="module-card" data-module-id="lab-08-camera" href="modules/labs/08-camera/lesson.html"><span class="check">&check;</span><div class="num">Lab 08</div><div class="title">Camera</div><div class="desc">Capture a photo into a heap buffer, strip its header, render it.</div><span class="assign-badge lab">TA pass-off + quiz</span><span class="assign-note">Builds on: Arrays/Strings/Structs (09), Pointers (10), Dynamic Memory (26)</span></a>
+    <a class="module-card" data-module-id="lab-09-client" href="modules/labs/09-client/lesson.html"><span class="check">&check;</span><div class="num">Lab 09</div><div class="title">Client</div><div class="desc">Upload the captured photo over TCP with a real socket client.</div><span class="assign-badge lab">TA pass-off + quiz</span><span class="assign-note">Builds on: Computer Networks (27), Socket Programming (28)</span></a>
+    <a class="module-card" data-module-id="lab-10-threaded-client" href="modules/labs/10-threaded-client/lesson.html"><span class="check">&check;</span><div class="num">Lab 10</div><div class="title">Threaded Client</div><div class="desc">Move the slow upload to a POSIX thread so the menu stays responsive.</div><span class="assign-badge lab">TA pass-off + quiz</span><span class="assign-note">Builds on: Socket Programming (28), Concurrency (29), Threads (32)</span></a>
+    <a class="module-card" data-module-id="lab-11-doorbell" href="modules/labs/11-doorbell/lesson.html"><span class="check">&check;</span><div class="num">Lab 11</div><div class="title">Doorbell (Capstone)</div><div class="desc">Compose every prior lab into one appliance running as a boot daemon.</div><span class="assign-badge lab">Capstone demo + quiz</span><span class="assign-note">Draws on all labs 05&ndash;10 and Modules 09, 10, 26&ndash;29, 32</span></a>
   </div>
 
 </div>

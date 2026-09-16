@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>02 — Command Line Lab | ECEn 224</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="lab-02-command-line">
+
+<div class="topbar">
+  <a class="back" href="../../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Lab 1 of 10</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit6">Unit 6 &middot; Weekly Labs</span>
+    <span class="badge unit6" style="opacity:0.7">TA pass-off + quiz</span>
+  </div>
+  <h1>Command Line Lab</h1>
+  <p class="subtitle">
+    The first lab, and the only one with no C code at all. The goal is to get you fluent enough
+    in a Linux terminal &mdash; navigation, tab completion, environment variables, a command-line
+    editor &mdash; that every later lab's setup instructions stop being an obstacle. It ends with
+    a self-contained shell challenge: a compressed archive you have to unpack and work through
+    using nothing but <code>man</code> pages and the commands you just practiced.
+  </p>
+  <div class="exam-note">
+    <b>Tested on:</b> not exam content itself, but this is the toolchain (terminal, <code>gdb</code>,
+    <code>objdump</code>) every later lab and the Bomb/Attack labs assume you already have.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<div class="callout">
+  <b>Official lab page:</b> This primer covers the concepts &mdash; for exact CAEDM setup steps,
+  starter code, and the TA pass-off checklist, use the official page:
+  <a href="https://byu-cpe.github.io/ecen224/labs/02_command-line/" target="_blank" rel="noopener">byu-cpe.github.io/ecen224/labs/02_command-line</a>.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Navigate a Linux directory tree using only the terminal, with no file-browser GUI</li>
+  <li>Use tab completion, command history, and in-line command editing to work efficiently</li>
+  <li>Set, read, and list environment variables</li>
+  <li>Create and edit a text file with a command-line editor (<code>nano</code>, <code>vim</code>, or <code>emacs</code>)</li>
+  <li>Use <code>man</code> pages to figure out flags for unfamiliar commands (<code>tar</code>, <code>chmod</code>) instead of guessing or searching the web</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. Why terminal-only, on purpose</h2>
+<p>
+  The lab explicitly bans file-browser apps and VS Code's file panel for this exercise: "that
+  defeats the purpose of learning the command line." That's not arbitrary strictness &mdash;
+  once you're reverse-engineering the Bomb Lab binary or debugging over an SSH session to a
+  CAEDM machine with no GUI at all, a file browser won't be there to fall back on. This lab
+  front-loads that dependency so it's not a surprise later.
+</p>
+<table>
+  <tr><th>Skill</th><th>Why it matters later</th></tr>
+  <tr><td>Tab completion</td><td>Typing full paths to starter code and binaries every lab, correctly, every time</td></tr>
+  <tr><td>Command history (&uarr;/&darr;)</td><td>Re-running <code>gcc</code>/<code>gdb</code> commands with small tweaks without retyping them</td></tr>
+  <tr><td>Environment variables</td><td>Compilers, SSH, and CAEDM group scripts all read variables like <code>$HOME</code> and <code>$PATH</code></td></tr>
+  <tr><td><code>man</code> pages</td><td>The Bomb Lab and every later lab expects you to look up a flag yourself instead of asking a TA</td></tr>
+</table>
+</section>
+
+<section class="lesson-section">
+<h2>2. Core commands and shortcuts</h2>
+<ul>
+  <li><b>New terminal:</b> <code>Ctrl+Alt+T</code></li>
+  <li><b>Recall a previous command:</b> <code>&uarr;</code> / <code>&darr;</code>, then edit it in place with <code>&larr;</code> / <code>&rarr;</code> and backspace before hitting Enter</li>
+  <li><b>Tab completion:</b> partial path or command name, then <code>Tab</code> &mdash; a single match completes it, multiple matches list the candidates</li>
+  <li><b>Environment variables:</b> <code>export VAR=value</code> sets one, <code>echo $VAR</code> reads one, <code>env</code> lists all of them; <code>$SHELL</code>, <code>$USER</code>, and <code>$HOME</code> are set for you already</li>
+</ul>
+<div class="callout">
+  <b>nano keybindings</b> (the simplest of the three suggested editors): Save <code>Ctrl+O</code>,
+  Exit <code>Ctrl+X</code>, Cut a line <code>Ctrl+K</code>, Paste <code>Ctrl+U</code>, Search
+  <code>Ctrl+W</code>. <code>vim</code> and <code>emacs</code> are more powerful but have a
+  steeper learning curve &mdash; pick whichever you'll actually practice with the other labs.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>3. The shell challenge</h2>
+<p>
+  Part 2 is a self-contained puzzle: a <code>challenge.tar.xz</code> file that's compressed
+  <i>twice</i> &mdash; once with <code>tar</code>, once with <code>xz</code> &mdash; that you
+  need to decompress in a single command, then work through multiple levels using only what
+  <code>README.txt</code> and <code>man</code> pages tell you. Two lookups you'll specifically
+  need:
+</p>
+<ul>
+  <li><code>man tar</code> &mdash; find the flag that extracts an archive, and the flag that names which file to extract</li>
+  <li><code>man chmod</code> &mdash; find the flag/mode that makes a script executable</li>
+</ul>
+<p>
+  The point isn't memorizing <code>tar xJf</code> as a magic incantation &mdash; it's building
+  the habit of reading a <code>man</code> page under time pressure and pulling out exactly the
+  two flags you need, which is the same skill you'll use reading <code>gdb</code>'s and
+  <code>objdump</code>'s much longer man pages later in the semester.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>4. Skills you'll need</h2>
+<p>
+  None &mdash; this lab has no lecture-module prerequisite. It's the foundation every later lab
+  (and the Bomb/Attack labs) assumes you already have.
+</p>
+</section>
+
+<section class="lesson-section">
+<div class="quiz">
+  <div class="quiz-q-text">You type <code>mk</code> and press Tab, and the terminal lists several commands (<code>mkdir</code>, <code>mkfifo</code>, <code>mknod</code>, ...) instead of completing anything. What does that mean?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">Tab completion failed and you should type the full command manually</button>
+    <button class="quiz-opt" data-correct="true">Multiple commands share the <code>mk</code> prefix, so the shell shows every match instead of guessing which one you meant</button>
+    <button class="quiz-opt" data-correct="false">Your terminal is misconfigured</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Tab completion only auto-fills when there's exactly one match. When several commands or files share a prefix, listing them is the shell's way of asking you to type a few more disambiguating characters.</div>
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text">You need to know which <code>tar</code> flag extracts an archive, but you don't remember it. What's the intended approach for this lab?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">Ask a TA to just run the command for you</button>
+    <button class="quiz-opt" data-correct="true">Run <code>man tar</code> and search its option list yourself</button>
+    <button class="quiz-opt" data-correct="false">Skip that part of the challenge, since it isn't graded</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>The shell challenge is explicitly designed to make you practice reading <code>man</code> pages to find flags yourself &mdash; the exact skill you'll lean on for <code>gdb</code> and <code>objdump</code> later, where nobody will hand you the flags.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../../../index.html">&larr; course map</a>
+  <a class="next" href="../03-c-programming/lesson.html">03. C Programming &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../../assets/quiz.js"></script>
+</body>
+</html>

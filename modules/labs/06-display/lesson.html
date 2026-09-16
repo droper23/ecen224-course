@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>06 — Display Lab | ECEn 224</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="lab-06-display">
+
+<div class="topbar">
+  <a class="back" href="../../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Lab 5 of 10</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit6">Unit 6 &middot; Weekly Labs</span>
+    <span class="badge unit6" style="opacity:0.7">TA pass-off + quiz</span>
+  </div>
+  <h1>Display Lab</h1>
+  <p class="subtitle">
+    Your code starts controlling real hardware: a Waveshare LCD + button HAT sitting on top of
+    the Raspberry Pi Z2W that will become the doorbell. You link against a vendor GPIO library,
+    draw shapes and text to the screen, read button input, and build a small selectable menu
+    system &mdash; the first piece of the doorbell's actual user interface.
+  </p>
+  <div class="exam-note">
+    <b>Tested on:</b> not exam-tested directly. But this is where "linking against a library"
+    (Module 13) and "structs/pointers as an API surface" (Modules 09&ndash;10) stop being
+    abstract and start being how you talk to a physical device.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<div class="callout">
+  <b>Official lab page:</b> This primer covers the concepts &mdash; for exact CAEDM setup steps,
+  the BCM2835 library install, starter code, and the TA pass-off checklist, use the official
+  page: <a href="https://byu-cpe.github.io/ecen224/labs/06_display/" target="_blank" rel="noopener">byu-cpe.github.io/ecen224/labs/06_display</a>.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Explain what GPIO pins are and why they're the standard way to attach peripherals to an SBC</li>
+  <li>Build a C project with a Makefile instead of manual <code>gcc</code> invocations, and explain what incremental compilation buys you</li>
+  <li>Link against a third-party vendor library (BCM2835) using <code>-l</code></li>
+  <li>Call a peripheral's header-defined API (display.h, buttons.h) to draw shapes/text and read input</li>
+  <li>Design a stateful menu loop: current selection, wraparound, and dispatch to a handler function</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. From GPIO pins to a header file</h2>
+<p>
+  The LCD/button HAT physically occupies all 40 GPIO pins on the Pi. Underneath, everything is
+  just reading and writing specific memory-mapped registers at specific voltages and timings
+  &mdash; but you never touch that layer directly. The <b>BCM2835 library</b> handles the
+  low-level GPIO access, and on top of that, the lab gives you <code>display.h</code>,
+  <code>buttons.h</code>, and <code>device.h</code>: ordinary C header files whose functions
+  happen to have hardware side effects instead of just computing values in memory.
+</p>
+<p>
+  This is the same relationship you already know from Module 13 (Linking): your <code>test.c</code>
+  calls functions it doesn't define, the linker resolves them against the library's object code,
+  and at that point it genuinely doesn't matter to your source file whether the function prints
+  to a terminal or lights up a physical pixel.
+</p>
+<div class="callout warn">
+  <b>Watch out:</b> <code>display_init()</code> must run before <code>buttons_init()</code>, or
+  you'll segfault. And because the program needs raw hardware access, it must be run with
+  <code>sudo</code>.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>2. Building with a Makefile</h2>
+<p>
+  Instead of retyping a long <code>gcc</code> command with library flags every time, the lab
+  gives you a Makefile: <code>make test</code> or <code>make &lt;filename&gt;</code> compiles
+  only the <code>.c</code> files that changed since the last build (tracked via their
+  <code>.o</code> object files), then re-links. As your projects grow across the rest of the
+  semester (display &rarr; file &rarr; camera &rarr; client &rarr; doorbell), this is what keeps
+  rebuilds fast instead of recompiling everything from scratch every time you fix one line.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>3. Drawing functions and the menu system</h2>
+<p>
+  The drawing API is parameterized by coordinates (against <code>DISPLAY_WIDTH</code> /
+  <code>DISPLAY_HEIGHT</code>), a font size (<code>Font8</code> through <code>Font24</code>), and
+  a color constant from <code>colors.h</code>. Required warm-up functions
+  (<code>clearScreen</code>, <code>drawHelloWorld</code>, <code>drawChars</code>,
+  <code>drawStars</code>, <code>drawFlag</code>) exist to get you comfortable calling that API
+  before the real deliverable: a <b>menu</b> driven by an <code>entries</code> array of item
+  names.
+</p>
+<table>
+  <tr><th>Menu requirement</th><th>What it means</th></tr>
+  <tr><td>Idle state</td><td>No redraw or action happens while no button is pressed &mdash; don't busy-loop-redraw every frame.</td></tr>
+  <tr><td>Highlighted selection</td><td>Exactly one entry is drawn in a distinct color at any time.</td></tr>
+  <tr><td>Up/down navigation</td><td>Moves the current-selection index; must wrap past the first/last entry instead of getting stuck.</td></tr>
+  <tr><td>Right = select</td><td>Dispatches to the function tied to the highlighted entry name (e.g. selecting "Flag" calls <code>drawFlag</code>), waits, then redraws the menu.</td></tr>
+</table>
+<p>
+  Structurally this is a small state machine: one integer (the current index) plus a dispatch
+  table mapping entries to handler functions. That pattern &mdash; and the wraparound arithmetic
+  (<code>(i + 1) % n</code> style logic) &mdash; is exactly what Lab 07 (File) reuses for its own
+  file-browser menu, so get it solid here.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>4. Skills you'll need</h2>
+<ul>
+  <li><a href="../../09-c-arrays-strings-structs/lesson.html">Module 09 &mdash; Arrays, Strings &amp; Structs</a>: the <code>entries</code> array and how string arrays are indexed.</li>
+  <li><a href="../../10-c-pointers/lesson.html">Module 10 &mdash; C Pointers</a>: header-declared functions taking pointers/handles to hardware state.</li>
+  <li><a href="../../02-information-storage/lesson.html">Module 02 &mdash; Information Storage</a>: colors here are just packed integers, the same bit-level reasoning as the byte/hex material in this module.</li>
+  <li><a href="../05-image/lesson.html">Lab 05 &mdash; Image</a>: not a strict prerequisite, but the same "index into a flat data buffer correctly" mindset applies to screen coordinates here.</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<div class="quiz">
+  <div class="quiz-q-text">Your menu has 4 entries (indices 0&ndash;3) and the current selection is index 3. The user presses "down." What should the new selection be if the menu wraps correctly?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">3 (stay, since there's nothing below)</button>
+    <button class="quiz-opt" data-correct="false">4 (out of bounds &mdash; undefined behavior)</button>
+    <button class="quiz-opt" data-correct="true">0 (wrap back to the top)</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>The lab explicitly requires wraparound: moving past the last entry returns to the first. With 4 entries, <code>(3 + 1) % 4 == 0</code>.</div>
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why must <code>display_init()</code> be called before <code>buttons_init()</code>?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">It's just a style convention with no functional effect</button>
+    <button class="quiz-opt" data-correct="true">Calling them in the wrong order causes a segmentation fault, per the vendor library's initialization requirements</button>
+    <button class="quiz-opt" data-correct="false"><code>buttons_init()</code> doesn't exist until <code>display_init()</code> defines it at runtime</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>This is a real, documented ordering requirement of the hardware initialization sequence &mdash; get it backwards and the program segfaults before you even reach your own logic.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../05-image/lesson.html">&larr; 05. Image</a>
+  <a class="next" href="../07-file/lesson.html">07. File &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../../assets/quiz.js"></script>
+</body>
+</html>

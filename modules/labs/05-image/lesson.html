@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>05 — Image Lab | ECEn 224</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="lab-05-image">
+
+<div class="topbar">
+  <a class="back" href="../../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Lab 4 of 10</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit6">Unit 6 &middot; Weekly Labs</span>
+    <span class="badge unit6" style="opacity:0.7">TA pass-off + quiz</span>
+  </div>
+  <h1>Image Lab</h1>
+  <p class="subtitle">
+    The first "programming heavy" lab: you write three real image-processing functions in C
+    &mdash; channel removal, grayscale conversion, and a neighbor-based OR filter &mdash; that
+    operate directly on the raw byte layout of a BMP file loaded into a <code>Bitmap</code>
+    struct. There's no image library doing the work for you; you're indexing into a flat byte
+    array and reasoning about what each byte means.
+  </p>
+  <div class="exam-note">
+    <b>Tested on:</b> not directly exam-tested, but manipulating raw memory through structs and
+    pointers &mdash; exactly what this lab forces you to do &mdash; is core to Game 1, Game 2,
+    and the Final.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<div class="callout">
+  <b>Official lab page:</b> This primer covers the concepts &mdash; for exact CAEDM setup steps,
+  starter code, and the TA pass-off checklist, use the official page:
+  <a href="https://byu-cpe.github.io/ecen224/labs/05_image/" target="_blank" rel="noopener">byu-cpe.github.io/ecen224/labs/05_image</a>.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Explain how a BMP file's pixel data is laid out as a flat array of bytes, not a 2D grid</li>
+  <li>Read and modify pixel color channels directly through a struct and a <code>uint8_t *</code></li>
+  <li>Apply bitwise AND/OR/XOR operators to combine or mask color channel values</li>
+  <li>Implement the luminance formula for grayscale conversion, including truncation to an integer</li>
+  <li>Explain why a filter that reads neighboring pixels must read from a separate copy of the data</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. The <code>Bitmap</code> struct and flat pixel arrays</h2>
+<p>
+  C has no image class, so the lab gives you a <code>Bitmap</code> struct that bundles
+  everything about one loaded image: a <code>FILE *</code>, the BMP file/DIB headers, width and
+  height, file size, and &mdash; the part you actually touch &mdash; <code>pxl_data</code>, a
+  <code>uint8_t *</code> pointing at the raw pixel bytes. A second field, <code>pxl_data_cpy</code>,
+  holds an unmodified copy of the same data.
+</p>
+<p>
+  Each pixel is <b>three consecutive bytes</b> &mdash; blue, green, red, in that order &mdash;
+  not a struct with named fields. So <code>pxl_data</code> is <code>3 &times; width &times;
+  height</code> bytes long, and pixel <code>(x, y)</code>'s blue byte lives at
+  <code>pxl_data[3 * (y * width + x)]</code>, green at <code>+1</code>, red at <code>+2</code>.
+  This is exactly the "array/pointer equivalence" and indexing-arithmetic material from
+  <a href="../../09-c-arrays-strings-structs/lesson.html">Module 09 &mdash; Arrays, Strings &amp;
+  Structs</a> and <a href="../../10-c-pointers/lesson.html">Module 10 &mdash; C Pointers</a>,
+  applied to something you can visually check for correctness: get the index arithmetic wrong
+  and the output image looks obviously broken.
+</p>
+<div class="callout warn">
+  <b>Watch out:</b> BMP files store rows bottom-up. If your loop assumes top-down row order, your
+  filters will still run without crashing &mdash; they'll just be wrong, and the wrongness won't
+  always be visually obvious for every function.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>2. The three functions</h2>
+<table>
+  <tr><th>Function</th><th>What it does</th></tr>
+  <tr><td><code>remove_color_channel()</code></td><td>Zero out one specified channel (R, G, or B) across every pixel.</td></tr>
+  <tr><td><code>grayscale()</code></td><td>Set every channel of every pixel to <code>Y = 0.299R + 0.587G + 0.114B</code>, truncated to an integer.</td></tr>
+  <tr><td><code>or_filter()</code></td><td>Bitwise-OR each channel with the same channel from the pixel directly above and below, with edge handling at row 0 and the last row.</td></tr>
+</table>
+<p>
+  <code>remove_color_channel()</code> is a warm-up in array indexing. <code>grayscale()</code>
+  forces you to be careful about integer truncation &mdash; the formula produces a float, and
+  the assignment target is a <code>uint8_t</code>. <code>or_filter()</code> is the one that
+  actually requires the two-buffer design: if you read <i>and</i> write to <code>pxl_data</code>
+  in the same pass, a pixel you already OR'd gets read again by the next row's calculation,
+  compounding the result incorrectly. That's why the filter must <b>read from
+  <code>pxl_data_cpy</code> and write to <code>pxl_data</code></b> &mdash; the copy stays a
+  stable, unmodified snapshot of the original image for the whole pass.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>3. Skills you'll need</h2>
+<ul>
+  <li><a href="../../09-c-arrays-strings-structs/lesson.html">Module 09 &mdash; Arrays, Strings &amp; Structs</a>: struct field access, contiguous array layout.</li>
+  <li><a href="../../10-c-pointers/lesson.html">Module 10 &mdash; C Pointers</a>: pointer arithmetic, the array/pointer duality <code>pxl_data[i]</code> vs <code>*(pxl_data + i)</code>.</li>
+  <li><a href="../../26-dynamic-memory/lesson.html">Module 26 &mdash; Dynamic Memory Allocation</a>: the pixel buffers here are heap-allocated; the same use-after-free/leak hazards apply if you ever resize or reload an image.</li>
+  <li><a href="../04-data-types-and-strings/lesson.html">Lab 04 &mdash; C Programming Part 2</a>: this lab assumes you're already comfortable with the pointer/array material it covers.</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<div class="quiz">
+  <div class="quiz-q-text">A pixel's blue byte is at <code>pxl_data[300]</code>. Where is that same pixel's red byte?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false"><code>pxl_data[301]</code></button>
+    <button class="quiz-opt" data-correct="false"><code>pxl_data[303]</code></button>
+    <button class="quiz-opt" data-correct="true"><code>pxl_data[302]</code></button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Each pixel is 3 consecutive bytes in blue, green, red order. If blue is at index 300, green is at 301 and red is at 302 &mdash; the same pixel, offset by +2 from blue.</div>
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text">Why does <code>or_filter()</code> need to read from <code>pxl_data_cpy</code> instead of reading and writing <code>pxl_data</code> in place?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">It's faster to have two arrays instead of one</button>
+    <button class="quiz-opt" data-correct="false"><code>pxl_data</code> is read-only in C</button>
+    <button class="quiz-opt" data-correct="true">Writing results back into <code>pxl_data</code> mid-pass would let already-modified pixels get OR'd into later calculations, compounding the result</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>A neighbor-based filter must compute every output pixel from the <i>original</i> input. If you overwrite in place, a pixel's already-filtered value can feed into the filter calculation for the next row, producing a result that depends on the order you happened to loop in &mdash; which is not what the filter is supposed to compute.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../04-data-types-and-strings/lesson.html">&larr; 04. Data Types &amp; Strings</a>
+  <a class="next" href="../06-display/lesson.html">06. Display &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../../assets/quiz.js"></script>
+</body>
+</html>

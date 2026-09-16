@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>08 — Camera Lab | ECEn 224</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="lab-08-camera">
+
+<div class="topbar">
+  <a class="back" href="../../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Lab 7 of 10</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit6">Unit 6 &middot; Weekly Labs</span>
+    <span class="badge unit6" style="opacity:0.7">TA pass-off + quiz</span>
+  </div>
+  <h1>Camera Lab</h1>
+  <p class="subtitle">
+    Wires a real camera into the doorbell project: capture a picture into a heap buffer, strip its
+    BMP header, render it to the display, and reuse the filters you wrote in the Image lab &mdash;
+    all triggered from the button you've already wired up in Display.
+  </p>
+  <div class="exam-note">
+    <b>Tested on:</b> this is hands-on CAEDM/hardware work and isn't graded content itself, but the
+    buffer-parsing and heap-allocation discipline it builds is directly tested on Game 2 and the
+    Final.
+  </div>
+</div>
+
+<main>
+
+<div class="callout">
+  <b>Official lab page:</b> This primer covers the concepts &mdash; for exact CAEDM setup steps,
+  starter code, and the TA pass-off checklist, use the official page:
+  <a href="https://byu-cpe.github.io/ecen224/labs/08_camera/" target="_blank" rel="noopener">byu-cpe.github.io/ecen224/labs/08_camera</a>.
+</div>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Capture a picture from the camera into a heap-allocated buffer</li>
+  <li>Explain why the raw capture is a full BMP file, not bare pixel data</li>
+  <li>Parse that buffer into a <code>Bitmap</code> struct and render it with the display API</li>
+  <li>Persist a captured image to disk with <code>fopen</code>/<code>fwrite</code>/<code>fclose</code></li>
+  <li>Reuse prior filter functions against newly captured (not just file-loaded) image data</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. The buffer you get back isn't pixels &mdash; it's a file</h2>
+<p>
+  <code>camera_capture_data</code> hands you a <code>uint8_t *</code> buffer, and it's tempting to
+  assume that buffer is just rows of pixels you can draw directly. It isn't: it's the bytes of a
+  complete <code>.bmp</code> file, header included. That's the same BMP header format you parsed in
+  the Image lab &mdash; the difference here is you're seeing it live, straight out of a driver,
+  instead of loaded from a file someone else already exported for you.
+</p>
+<p>
+  That's why the workflow goes through <code>create_bmp</code> before anything touches the screen:
+  it walks the header to find where pixel data actually starts and hands you back a
+  <code>Bitmap</code> struct whose <code>pxl_data</code> field is the part you can actually draw.
+  Skip that step and you'll render header bytes as if they were pixels &mdash; garbage color noise
+  at the top-left of a corrupted-looking image is the classic symptom.
+</p>
+<div class="flow">
+  <div class="flow-step">Camera<br><code>camera_capture_data</code></div>
+  <span class="flow-arrow">&rarr;</span>
+  <div class="flow-step">Raw buffer<br><code>uint8_t *</code> (BMP file)</div>
+  <span class="flow-arrow">&rarr;</span>
+  <div class="flow-step">Parsed<br><code>create_bmp</code></div>
+  <span class="flow-arrow">&rarr;</span>
+  <div class="flow-step">Screen<br><code>display_draw_image_data</code></div>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>2. Every allocation gets a matching release</h2>
+<p>
+  This lab is where the malloc/free discipline from Dynamic Memory stops being an abstract rule and
+  starts being something a TA actually checks: the Makefile builds with <code>-Werror</code>, and
+  pass-off explicitly includes a no-leak check. The capture buffer, the <code>Bitmap</code> struct
+  from <code>create_bmp</code>, and anything a filter allocates all need their release call before
+  the function returns or the program exits.
+</p>
+<table>
+<tr><th>Allocate</th><th>Release</th></tr>
+<tr><td><code>malloc</code> (raw capture buffer)</td><td><code>free</code></td></tr>
+<tr><td><code>create_bmp</code></td><td><code>destroy_bmp</code></td></tr>
+<tr><td><code>fopen</code> (writing <code>doorbell.bmp</code>)</td><td><code>fclose</code></td></tr>
+</table>
+<div class="callout warn">
+  <b>Watch for:</b> a capture-and-display path that exits early (an error branch, a button that
+  cancels mid-capture) is the easiest way to leak &mdash; every early <code>return</code> still owes
+  the same frees as the normal path.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>3. Reusing Image-lab filters against a live capture</h2>
+<p>
+  <code>remove_color_channel</code> and <code>or_filter</code> from the Image lab were written
+  against a buffer you loaded from a file. Porting them here works precisely because you already
+  isolated the pixel-manipulation logic from the file-loading logic back then &mdash; the filters
+  don't care whether <code>pxl_data</code> came from <code>fopen</code> or from
+  <code>create_bmp</code> on a fresh capture, as long as the width, height, and per-pixel layout
+  match. If a filter assumed something about how the buffer was obtained, this is where that
+  assumption breaks.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>Skills you'll need</h2>
+<ul>
+  <li><a href="../../09-c-arrays-strings-structs/lesson.html">Module 09 &mdash; Arrays, Strings &amp; Structs</a> &mdash; struct layout, needed to read the <code>Bitmap</code>/BMP header fields correctly.</li>
+  <li><a href="../../10-c-pointers/lesson.html">Module 10 &mdash; C Pointers</a> &mdash; walking a raw <code>uint8_t *</code> buffer by offset.</li>
+  <li><a href="../../26-dynamic-memory/lesson.html">Module 26 &mdash; Dynamic Memory Allocation</a> &mdash; the malloc/free pairing this lab's pass-off checks for.</li>
+  <li><a href="../05-image/lesson.html">05. Image</a> &mdash; where <code>remove_color_channel</code> and <code>or_filter</code> were originally written.</li>
+</ul>
+</section>
+
+<div class="quiz">
+  <div class="quiz-q-text"><code>camera_capture_data</code> returns a buffer. Why can't you pass that buffer straight to <code>display_draw_image_data</code>?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">You can &mdash; the raw buffer is already pure pixel data</button>
+    <button class="quiz-opt" data-correct="true">The buffer is a full BMP file including a header, so pixel data must first be located via <code>create_bmp</code></button>
+    <button class="quiz-opt" data-correct="false">The display API only accepts data read from disk with <code>fopen</code></button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>The raw capture is a complete <code>.bmp</code> file, header and all &mdash; exactly like a file you'd load from disk. <code>create_bmp</code> parses that header so you get back a struct whose <code>pxl_data</code> is safe to draw.</div>
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text">Pass-off for this lab explicitly checks for memory leaks. Which pairing is easiest to forget on an early-return error path?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="true">Calling <code>destroy_bmp</code> on the <code>Bitmap</code> struct before returning out of an error branch</button>
+    <button class="quiz-opt" data-correct="false">Calling <code>display_draw_image_data</code> a second time</button>
+    <button class="quiz-opt" data-correct="false">Reusing <code>remove_color_channel</code> more than once</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Every early exit still owes the same frees as the normal path. An error branch that <code>return</code>s before <code>destroy_bmp</code> (or <code>free</code>/<code>fclose</code>) runs is the classic way this lab leaks.</div>
+</div>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../07-file/lesson.html">&larr; 07. File</a>
+  <a class="next" href="../09-client/lesson.html">09. Client &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../../assets/quiz.js"></script>
+</body>
+</html>

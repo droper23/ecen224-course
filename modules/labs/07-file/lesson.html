@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>07 — File Lab | ECEn 224</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="lab-07-file">
+
+<div class="topbar">
+  <a class="back" href="../../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Lab 6 of 10</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit6">Unit 6 &middot; Weekly Labs</span>
+    <span class="badge unit6" style="opacity:0.7">TA pass-off + quiz</span>
+  </div>
+  <h1>File Lab</h1>
+  <p class="subtitle">
+    You take the menu system from the Display lab and point it at the filesystem: scan a folder,
+    filter entries down to <code>.bmp</code> and <code>.log</code> files, list up to 8 of them on
+    the LCD, and render whichever one the user selects &mdash; an image or the start of a log's
+    text. This is the doorbell's photo/log viewer, and the first lab where you're reading
+    directory structure, not just a single file.
+  </p>
+  <div class="exam-note">
+    <b>Tested on:</b> not exam-tested directly, but <code>FILE *</code> streams, buffers, and
+    resource cleanup are the same C I/O material Module 07 covers and Game 1 tests.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<div class="callout">
+  <b>Official lab page:</b> This primer covers the concepts &mdash; for exact CAEDM setup steps,
+  starter code, and the TA pass-off checklist, use the official page:
+  <a href="https://byu-cpe.github.io/ecen224/labs/07_file/" target="_blank" rel="noopener">byu-cpe.github.io/ecen224/labs/07_file</a>.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Distinguish a directory stream (<code>DIR *</code>) from a file stream (<code>FILE *</code>)</li>
+  <li>Iterate a directory's entries with <code>opendir()</code>/<code>readdir()</code>/<code>closedir()</code> until the <code>NULL</code> sentinel</li>
+  <li>Filter filenames by extension using <code>strncmp()</code> against <code>d_name</code></li>
+  <li>Read file contents into a fixed-size buffer with <code>fopen()</code>/<code>fread()</code>/<code>fclose()</code></li>
+  <li>Structure a growing program into independent functions instead of one long <code>main()</code></li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. Two different kinds of "stream"</h2>
+<p>
+  It's easy to conflate these because both are opaque pointer types you get from an <code>open</code>
+  call and must explicitly close, but they represent different things:
+</p>
+<table>
+  <tr><th>Type</th><th>Represents</th><th>Opened with</th><th>Iterated/read with</th><th>Closed with</th></tr>
+  <tr><td><code>DIR *</code></td><td>An ordered list of a directory's entries</td><td><code>opendir()</code></td><td><code>readdir()</code> &rarr; <code>struct dirent *</code></td><td><code>closedir()</code></td></tr>
+  <tr><td><code>FILE *</code></td><td>A position within one file's contents</td><td><code>fopen()</code></td><td><code>fread()</code></td><td><code>fclose()</code></td></tr>
+</table>
+<p>
+  <code>readdir()</code> returns a <code>struct dirent *</code> each call; its <code>d_name</code>
+  field is the filename (a plain <code>char</code> array, same string-handling rules as Module 09).
+  When there's nothing left, <code>readdir()</code> returns <code>NULL</code> &mdash; the loop
+  terminator. Every entry it returns, filtered or not, includes things you don't want (like
+  <code>.</code> and <code>..</code>), which is exactly why filtering by extension is a required
+  step, not an optional cleanliness pass.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. The three functions</h2>
+<table>
+  <tr><th>Function</th><th>What it does</th></tr>
+  <tr><td><code>get_entries()</code></td><td>Scans the folder, keeps only <code>.bmp</code>/<code>.log</code> names via <code>strncmp()</code> on the file extension, fills an <code>entries</code> array (capped at 8), returns the count found.</td></tr>
+  <tr><td><code>draw_menu()</code></td><td>Reused from Lab 06 &mdash; renders the (now dynamically populated) <code>entries</code> array as a menu.</td></tr>
+  <tr><td><code>draw_file()</code></td><td>Opens the selected file; for a <code>.bmp</code>, displays the image for 2 seconds; for a <code>.log</code>, reads and shows the first 100 characters of text for 2 seconds; then redraws the menu with the same item still highlighted.</td></tr>
+</table>
+<div class="callout">
+  <b>Design note carried from the official lab:</b> write <code>get_entries</code>,
+  <code>draw_menu</code>, and <code>draw_file</code> as independent functions rather than inlining
+  their logic into <code>main()</code>. The lab explicitly frames this as avoiding technical debt
+  &mdash; Lab 08 and the final doorbell project keep adding features on top of this same file, and
+  tightly coupled code makes each addition harder than the last.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>3. Skills you'll need</h2>
+<ul>
+  <li><a href="../../07-c-io/lesson.html">Module 07 &mdash; C I/O</a>: this lab is that module's <code>printf</code>/<code>scanf</code> material extended to file streams instead of stdin/stdout.</li>
+  <li><a href="../../10-c-pointers/lesson.html">Module 10 &mdash; C Pointers</a>: <code>DIR *</code> and <code>FILE *</code> are both opaque pointers you pass around and must not use after closing.</li>
+  <li><a href="../06-display/lesson.html">Lab 06 &mdash; Display</a>: hard prerequisite &mdash; <code>draw_menu</code> and the button-driven selection loop are reused directly, not rebuilt.</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<div class="quiz">
+  <div class="quiz-q-text"><code>readdir()</code> is being called in a loop to list a directory's contents. How does the loop know when it's out of entries?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">You must call <code>direntcount()</code> first and loop that many times</button>
+    <button class="quiz-opt" data-correct="true"><code>readdir()</code> returns <code>NULL</code> once there are no more entries</button>
+    <button class="quiz-opt" data-correct="false">The loop runs a fixed 8 times, matching the menu's display limit</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span><code>readdir()</code> is a sentinel-terminated iterator: keep calling it and processing the returned <code>struct dirent *</code> until it hands back <code>NULL</code>. The 8-entry cap is a separate display limit applied while filtering, not how the underlying iteration itself terminates.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../06-display/lesson.html">&larr; 06. Display</a>
+  <a class="next" href="../08-camera/lesson.html">08. Camera &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../../assets/quiz.js"></script>
+</body>
+</html>

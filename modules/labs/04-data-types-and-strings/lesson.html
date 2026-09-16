@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>04 — C Programming Lab (Part 2) | ECEn 224</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+</head>
+<body data-module-id="lab-04-data-types-and-strings">
+
+<div class="topbar">
+  <a class="back" href="../../../index.html">&larr; course map</a>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-progress">Lab 3 of 10</span>
+</div>
+
+<div class="hero">
+  <div class="kicker">
+    <span class="badge unit6">Unit 6 &middot; Weekly Labs</span>
+    <span class="badge unit6" style="opacity:0.7">TA pass-off + quiz</span>
+  </div>
+  <h1>C Programming Lab &mdash; Part 2: Data Types &amp; Strings</h1>
+  <p class="subtitle">
+    Where Part 1 introduced C's native types, this lab is about the ways picking the wrong one
+    bites you: overflow, underflow, sign/zero extension, truncation, and integer promotion in
+    mixed-type expressions. The second half covers C strings &mdash; which don't exist as a real
+    type, only as null-terminated <code>char</code> arrays &mdash; and the specific bug of
+    returning a pointer to a local array. You implement and debug real functions against provided
+    test cases, using a small logging library instead of scattered <code>printf</code> calls.
+  </p>
+  <div class="exam-note">
+    <b>Tested on:</b> sign/zero extension and truncation are Game 1 and Final material
+    (Module 03 &mdash; Integer Representations); the local-array-pointer bug previews stack-frame
+    reasoning from Unit 4.
+  </div>
+</div>
+
+<main>
+
+<section class="lesson-section">
+<div class="callout">
+  <b>Official lab page:</b> This primer covers the concepts &mdash; for exact CAEDM setup steps,
+  starter code, and the TA pass-off checklist, use the official page:
+  <a href="https://byu-cpe.github.io/ecen224/labs/04_data-types-and-strings/" target="_blank" rel="noopener">byu-cpe.github.io/ecen224/labs/04_data-types-and-strings</a>.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>Learning objectives</h2>
+<ul class="objectives">
+  <li>Explain why native C integer types (<code>short</code>/<code>int</code>/<code>long</code>) aren't a fixed size, and why <code>stdint.h</code> types (<code>uint32_t</code>, etc.) are safer</li>
+  <li>Trace what happens to a value under sign extension, zero extension, and truncation when casting between integer sizes</li>
+  <li>Predict which operand type "wins" when an expression mixes integer types (integer promotion)</li>
+  <li>Explain why C strings are just <code>char</code> arrays with a null terminator, not a real type</li>
+  <li>Identify why returning a pointer to a function-local array is unsafe, and how to fix it</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<h2>1. Why <code>stdint.h</code> instead of <code>int</code></h2>
+<p>
+  <code>short</code>, <code>int</code>, and <code>long</code> have no size the C standard
+  guarantees &mdash; only a minimum. Code that assumes <code>int</code> is 4 bytes can silently
+  break on a platform where it isn't, which is exactly the kind of bug that's invisible until it
+  isn't. <code>stdint.h</code> types like <code>uint8_t</code>, <code>uint32_t</code>, and
+  <code>int16_t</code> pin down both the width and signedness in the name itself, which is why
+  the lab (and the rest of the course) prefers them over native types.
+</p>
+<table>
+  <tr><th>Failure mode</th><th>What happens</th></tr>
+  <tr><td>Overflow</td><td>A <code>uint8_t</code> loop counter compared against 500 never reaches it &mdash; it wraps at 255 back to 0 forever</td></tr>
+  <tr><td>Underflow</td><td>Decrementing an unsigned 0 wraps to the type's max value (e.g. 4,294,967,295 for <code>uint32_t</code>) instead of going negative</td></tr>
+</table>
+<p>
+  There's a real memory-vs-safety tradeoff here too: a 4K image stored one byte per color channel
+  (<code>uint8_t</code>) is about 25MB; the same image at <code>uint64_t</code> per channel would
+  be roughly 200MB for identical color information. Bigger types reduce overflow risk but aren't
+  free.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>2. Sign extension, zero extension, truncation</h2>
+<p>
+  These three describe what happens to the bits when you cast between integer sizes &mdash; the
+  same material as Module 03 (Integer Representations), applied directly in code instead of on
+  paper.
+</p>
+<table>
+  <tr><th>Operation</th><th>When</th><th>What happens</th></tr>
+  <tr><td>Sign extension</td><td>signed type &rarr; larger signed type</td><td>the sign bit (MSB) is copied into all the new high-order bits, preserving the value</td></tr>
+  <tr><td>Zero extension</td><td>unsigned type &rarr; larger type</td><td>the new high-order bits are filled with 0</td></tr>
+  <tr><td>Truncation</td><td>larger type &rarr; smaller type</td><td>the extra high-order bits are simply dropped &mdash; data loss if they held meaningful information</td></tr>
+</table>
+<p>
+  Float/double casts follow the same shape: <code>float</code> &rarr; <code>double</code> is a
+  safe, precision-gaining widen; <code>double</code> &rarr; <code>float</code> can lose precision
+  and rounds the value to fit.
+</p>
+<div class="callout">
+  <b>Integer promotion:</b> in a mixed-type expression, smaller-than-<code>int</code> types get
+  promoted to <code>int</code>/<code>unsigned int</code> before any arithmetic happens, and
+  <code>double</code> dominates <code>float</code> which dominates integers. This is why
+  <code>uint8_t a = 200, b = 100; int sum = a + b;</code> gives you 300, not a wrapped-around
+  value &mdash; the addition itself happens in <code>int</code>, after promotion, before the
+  result is ever stored back into a narrower type.
+</p>
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>3. C strings and the local-array-return bug</h2>
+<p>
+  C has no string type. A "string" is a <code>char</code> array ending in a null terminator
+  (<code>\0</code>), and every <code>string.h</code> function &mdash; <code>strlen()</code>,
+  <code>sprintf()</code>, <code>strcpy()</code>, <code>strncat()</code>, <code>strncmp()</code>
+  &mdash; is really just doing array/pointer arithmetic that stops (or doesn't) at that byte.
+</p>
+<div class="callout warn">
+  <b>Classic bug:</b> a function that declares a local <code>char buf[64]</code> and
+  <code>return</code>s <code>buf</code> is returning a pointer to memory that no longer belongs
+  to it &mdash; that stack space is reclaimed the instant the function returns. The fix is to
+  have the <i>caller</i> own the memory: pass a <code>char *</code> buffer in as a parameter and
+  have the function fill it, instead of trying to hand memory back out. This is your first real
+  encounter with the idea that a local variable's lifetime ends at its function's return &mdash;
+  the same stack-frame reasoning Unit 4 covers explicitly.
+</div>
+</section>
+
+<section class="lesson-section">
+<h2>4. Debugging: trace prints and a logging library</h2>
+<p>
+  The lab pushes <b>intentional and incremental programming</b>: write small, testable pieces on
+  purpose rather than large blocks you debug after the fact. Its recommended debugging technique
+  is <b>trace debugging</b> &mdash; printing variable values at chosen points to see what the
+  program actually did, versus what you assumed it did.
+</p>
+<p>
+  Scattering raw <code>printf</code> calls works but is hard to find and remove later, so the
+  lab has you use a small logging library (<code>log.c</code>) instead:
+</p>
+<pre><code class="language-c">#include "log.h"
+...
+int value = 42;
+log_info("The value is %d", value);
+</code></pre>
+<pre><code>11:56:31 INFO  main.c:9: The value is 42</code></pre>
+<p>
+  <code>log_debug</code>, <code>log_warn</code>, and <code>log_error</code> work the same way,
+  each tagging output with a level so you can grep for it or strip it out later &mdash; a small
+  taste of the structured debugging habits Module 12 (Debugging) covers more generally.
+</p>
+</section>
+
+<section class="lesson-section">
+<h2>5. Skills you'll need</h2>
+<ul>
+  <li><a href="../../09-c-arrays-strings-structs/lesson.html">Module 09 &mdash; Arrays, Strings &amp; Structs</a>: the array/null-terminator model this lab's string functions rely on.</li>
+  <li><a href="../../10-c-pointers/lesson.html">Module 10 &mdash; C Pointers</a>: why returning a pointer to a local array is unsafe.</li>
+  <li><a href="../../02-information-storage/lesson.html">Module 02 &mdash; Information Storage</a>: bit-level grounding for sign/zero extension and truncation.</li>
+  <li><a href="../03-c-programming/lesson.html">Lab 03 &mdash; C Programming Part 1</a>: this lab assumes you're already comfortable with native types and casting basics.</li>
+</ul>
+</section>
+
+<section class="lesson-section">
+<div class="quiz">
+  <div class="quiz-q-text">A function declares <code>char result[32];</code>, fills it in, and <code>return</code>s it as a <code>char *</code>. The caller prints garbage. Why?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false"><code>char</code> arrays can't be returned from functions in C</button>
+    <button class="quiz-opt" data-correct="true"><code>result</code> lived on the function's stack frame, which is invalid the instant the function returns &mdash; the caller is reading freed memory</button>
+    <button class="quiz-opt" data-correct="false">The array needed to be declared as <code>static</code> to hold any data at all</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>A local array's memory belongs to its function's stack frame, which is reclaimed the moment the function returns. The returned pointer still points at that address, but nothing guarantees the data there is preserved &mdash; the fix is to have the caller pass in a buffer for the function to fill instead.</div>
+</div>
+
+<div class="quiz">
+  <div class="quiz-q-text"><code>uint8_t a = 200; uint8_t b = 100; int sum = a + b;</code> &mdash; what does <code>sum</code> end up holding?</div>
+  <div class="quiz-opts">
+    <button class="quiz-opt" data-correct="false">44 (wrapped around within 8 bits before being stored)</button>
+    <button class="quiz-opt" data-correct="true">300 (both operands are promoted to <code>int</code> before the addition happens)</button>
+    <button class="quiz-opt" data-correct="false">Undefined behavior, since <code>uint8_t</code> can't be added directly</button>
+  </div>
+  <div class="quiz-explain"><span class="verdict"></span>Integer promotion means both <code>uint8_t</code> operands are converted to <code>int</code> before the <code>+</code> runs, so the arithmetic happens at full <code>int</code> width. The overflow only would have occurred if the addition happened at 8-bit width, or if the 300 were later truncated back into a <code>uint8_t</code>.</div>
+</div>
+</section>
+
+</main>
+
+<div class="lesson-nav">
+  <a class="prev" href="../03-c-programming/lesson.html">&larr; 03. C Programming</a>
+  <a class="next" href="../05-image/lesson.html">05. Image &rarr;</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../../../assets/quiz.js"></script>
+</body>
+</html>
