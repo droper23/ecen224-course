@@ -4,3 +4,5 @@ extracted_text/
 
 .DS_Store
 .codex/
+__pycache__/
+tools/macos-launcher/build/

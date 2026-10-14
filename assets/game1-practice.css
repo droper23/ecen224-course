@@ -1,0 +1,65 @@
+.practice-header { max-width: var(--max-width); margin: 0 auto; padding: 2.6rem 1.5rem 1.2rem; }
+.practice-header h1 { margin: .35rem 0 .65rem; }
+.practice-header .subtitle { max-width: 780px; }
+.practice-layout { max-width: var(--max-width); margin: 0 auto; padding: .5rem 1.5rem 3rem; }
+.practice-overview, .practice-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); padding: 1.15rem; margin: 1rem 0; }
+.practice-overview { border-left: 4px solid var(--unit1); }
+.practice-overview h2, .practice-card h2 { margin-top: 0; }
+.practice-overview ul { columns: 2; margin-bottom: 0; }
+.practice-overview li { break-inside: avoid; margin: .35rem 0; }
+.practice-actions { display: flex; flex-wrap: wrap; gap: .65rem; margin: 1rem 0 0; }
+.practice-btn { appearance: none; border: 1px solid var(--accent); color: var(--bg); background: var(--accent); border-radius: 8px; padding: .58rem .85rem; font: inherit; font-weight: 650; cursor: pointer; }
+.practice-btn:hover { filter: brightness(1.1); }
+.practice-btn.secondary { background: transparent; color: var(--accent); }
+.practice-btn:disabled { opacity: .55; cursor: default; }
+.practice-status { color: var(--text-dim); font-size: .9rem; margin: .8rem 0 0; }
+.local-launch { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 1.1rem; padding: .85rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raised); }
+.local-launch span, .local-launch-help { color: var(--text-dim); font-size: .86rem; }
+.local-launch-help { margin: .55rem 0 0; }
+.topic-picker { display: flex; flex-wrap: wrap; gap: .45rem; }
+.topic-picker button { background: var(--bg-raised); border: 1px solid var(--border); color: var(--text-dim); border-radius: 999px; padding: .35rem .6rem; font: .82rem var(--sans); cursor: pointer; }
+.topic-picker button.active, .topic-picker button:hover { color: var(--text); border-color: var(--accent); }
+.question-meta { display: flex; gap: .45rem; align-items: center; color: var(--text-dim); font-size: .82rem; margin-bottom: .7rem; }
+.topic-tag { border: 1px solid var(--border); border-radius: 999px; padding: .12rem .45rem; }
+.question-prompt { font-size: 1.02rem; line-height: 1.55; }
+.answer-options { display: grid; gap: .55rem; margin-top: 1rem; }
+.answer-option { width: 100%; text-align: left; background: var(--bg-raised); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: .7rem .8rem; font: inherit; cursor: pointer; }
+.answer-option:hover:not(:disabled) { border-color: var(--accent); }
+.answer-option.selected { border-color: var(--accent); background: rgba(96, 165, 250, .12); }
+.answer-option.correct { border-color: var(--good); background: rgba(74, 222, 128, .12); }
+.answer-option.incorrect { border-color: var(--bad); background: rgba(248, 113, 113, .12); }
+.answer-option:disabled { cursor: default; }
+.practice-feedback { display: none; margin-top: 1rem; padding-top: .85rem; border-top: 1px dashed var(--border); color: var(--text-dim); line-height: 1.5; }
+.practice-feedback.show { display: block; }
+.practice-feedback strong.good { color: var(--good); }
+.practice-feedback strong.bad { color: var(--bad); }
+.mock-controls { display: flex; justify-content: space-between; align-items: center; gap: 1rem; color: var(--text-dim); font-size: .9rem; }
+.mock-progress { height: 8px; border: 1px solid var(--border); background: var(--bg-raised); border-radius: 999px; overflow: hidden; margin: .75rem 0 1.2rem; }
+.mock-progress div { height: 100%; background: var(--accent); transition: width .2s; }
+.mock-question { display: none; }
+.mock-question.active { display: block; }
+.mock-result { border-left: 4px solid var(--accent); }
+.result-score { font-size: 2rem; font-weight: 700; color: var(--accent); margin: .25rem 0; }
+.review-list { padding-left: 1.2rem; }
+.review-list li { margin: .7rem 0; }
+.review-list code { font-size: .9em; }
+.terminal-practice { margin-top: 1rem; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #101621; }
+.terminal-practice header { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .55rem .75rem; color: #cbd5e1; background: #1e293b; font-size: .82rem; }
+.terminal-practice textarea { box-sizing: border-box; display: block; width: 100%; min-height: 12rem; resize: vertical; padding: .8rem; border: 0; border-bottom: 1px solid #334155; outline: 0; background: #101621; color: #e2e8f0; font: .84rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; tab-size: 2; }
+.terminal-practice .terminal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .55rem; padding: .65rem .75rem; background: #172033; }
+.terminal-practice .terminal-actions button { border-radius: 6px; border: 1px solid #60a5fa; background: #2563eb; color: white; padding: .38rem .65rem; font: inherit; cursor: pointer; }
+.terminal-practice .terminal-actions button.secondary { color: #bfdbfe; background: transparent; }
+.terminal-practice .terminal-actions button:disabled { opacity: .55; cursor: default; }
+.terminal-practice .terminal-status { color: #cbd5e1; font-size: .8rem; }
+.terminal-output { margin: 0; padding: .75rem; white-space: pre-wrap; color: #d1fae5; font: .82rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.terminal-output.error { color: #fecaca; }
+.terminal-help { margin: .75rem 0 0; color: var(--text-dim); font-size: .85rem; }
+.answer-breakdown { display: grid; gap: .55rem; margin-top: .9rem; }
+.answer-breakdown div { border-left: 2px solid var(--border); padding-left: .65rem; }
+.answer-breakdown .right { border-left-color: var(--good); }
+.answer-breakdown .wrong { border-left-color: var(--bad); }
+.game1-link { display: flex; gap: .9rem; align-items: center; max-width: 1000px; margin: 0 auto 1rem; padding: .95rem 1.1rem; border: 1px solid var(--accent); border-radius: var(--radius); background: rgba(96, 165, 250, .08); color: var(--text); text-decoration: none; }
+.game1-link:hover { background: rgba(96, 165, 250, .15); }
+.game1-link .game1-link-title { font-weight: 700; }
+.game1-link .game1-link-copy { color: var(--text-dim); font-size: .9rem; }
+@media (max-width: 640px) { .practice-overview ul { columns: 1; } .mock-controls, .local-launch { align-items: flex-start; flex-direction: column; } }

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Game 1 Practice Lab | ECEn 224</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/game1-practice.css">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<div class="topbar"><a class="back" href="index.html">&larr; course map</a><div class="topbar-spacer"></div><span class="topbar-progress">Game 1 preparation</span></div>
+
+<header class="practice-header">
+  <div class="kicker"><span class="badge unit1">Game 1</span> <span class="badge unit2">Modules 01&ndash;14</span></div>
+  <h1>Practice Lab: Game 1</h1>
+  <p class="subtitle">Build recall, then pressure-test it. The drills mix the exact skills from the material before Game 1: bits and representations, C behavior, debugging/linking, and the first layer of x86-64 assembly. Every answer explains the rule it is testing, so a miss becomes a targeted review task.</p>
+</header>
+
+<main class="practice-layout">
+  <section class="practice-overview">
+    <h2>What to be ready to do</h2>
+    <ul>
+      <li>Convert binary, hex, unsigned, and two&rsquo;s-complement values.</li>
+      <li>Predict overflow, casts, shifts, bitwise operations, and IEEE-754 edge cases.</li>
+      <li>Trace C expressions involving arrays, strings, structs, pointers, scope, and control flow.</li>
+      <li>Read compiler errors/warnings and use the right <code>gdb</code> move.</li>
+      <li>Explain compilation, symbols, static vs. dynamic linking, registers, and AT&amp;T operand order.</li>
+    </ul>
+    <div class="practice-actions"><button class="practice-btn" id="startMock">Start a 25-question mock game</button><button class="practice-btn secondary" id="startMixed">Give me a mixed drill</button></div>
+    <p class="practice-status" id="bestScore">No mock attempt saved in this browser yet.</p>
+    <div class="local-launch">
+      <div><strong>Use the editable terminal blocks?</strong><br><span>On macOS, the launcher starts your local study server and opens the runnable version.</span></div>
+      <a class="practice-btn" href="ecen224-terminal://start">Start local terminal</a>
+    </div>
+    <p class="local-launch-help">First use only: build and open the included <code>ECEn 224 Terminal.app</code> once. <a href="https://github.com/droper23/ecen224-course#one-click-macos-terminal" target="_blank" rel="noopener">Setup instructions</a></p>
+  </section>
+
+  <section class="practice-card" aria-labelledby="drillTitle">
+    <h2 id="drillTitle">Targeted drills</h2>
+    <p>Choose a weak area, answer one question at a time, and keep going until the reasoning feels automatic.</p>
+    <div class="topic-picker" id="topicPicker"></div>
+    <div id="drillArea" aria-live="polite"></div>
+  </section>
+
+  <section class="practice-card" id="mockArea" hidden aria-live="polite"></section>
+</main>
+
+<script src="assets/game1-practice.js"></script>
+</body>
+</html>

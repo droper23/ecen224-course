@@ -64,3 +64,25 @@ python3 -m http.server 8000
 ```
 
 Then open `http://localhost:8000`.
+
+For the Game 1 Practice Lab's editable C terminal blocks, use the included
+localhost-only study server instead:
+
+    python3 tools/dev-server.py
+
+Then open http://127.0.0.1:8018/game1-practice.html. The server compiles
+and runs the code you enter on your own machine, so use it only for this
+trusted local checkout.
+
+### One-click macOS terminal
+
+The GitHub Pages Practice Lab has a **Start local terminal** button. It uses
+the ecen224-terminal:// URL scheme, which macOS only recognizes after this
+one-time setup from a trusted local checkout:
+
+    zsh tools/macos-launcher/build.sh
+    open "tools/macos-launcher/build/ECEn 224 Terminal.app"
+
+The first launch automatically finds this checkout; if the app is moved later,
+it asks you to select the course folder. After that, the GitHub Pages button
+starts the localhost-only runner and opens the interactive practice page.
