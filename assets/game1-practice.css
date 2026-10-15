@@ -2,6 +2,18 @@
 .practice-header h1 { margin: .35rem 0 .65rem; }
 .practice-header .subtitle { max-width: 780px; }
 .practice-layout { max-width: var(--max-width); margin: 0 auto; padding: .5rem 1.5rem 3rem; }
+.homework-guide { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); padding: 1.15rem; margin: 1rem 0; }
+.guide-heading { display: flex; justify-content: space-between; gap: 1.5rem; align-items: start; }
+.guide-heading h2 { margin: .35rem 0 0; }
+.guide-heading p, .guide-note { max-width: 680px; color: var(--text-dim); line-height: 1.55; margin: 0; }
+.guide-note { max-width: none; margin: 1rem 0; padding: .75rem .85rem; border-left: 3px solid var(--accent); background: var(--bg-raised); }
+.homework-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
+.homework-grid details { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raised); overflow: hidden; }
+.homework-grid summary { cursor: pointer; padding: .8rem; font-weight: 700; }
+.homework-grid summary span { color: var(--accent); margin-right: .45rem; }
+.homework-grid details > div { padding: 0 .9rem .65rem; color: var(--text-dim); line-height: 1.5; }
+.homework-grid p { margin: .55rem 0; }
+.exam-extras { margin-top: 1rem; padding: .85rem; border: 1px solid var(--border); border-radius: 8px; line-height: 1.55; }
 .practice-overview, .practice-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); padding: 1.15rem; margin: 1rem 0; }
 .practice-overview { border-left: 4px solid var(--unit1); }
 .practice-overview h2, .practice-card h2 { margin-top: 0; }
@@ -62,4 +74,4 @@
 .game1-link:hover { background: rgba(96, 165, 250, .15); }
 .game1-link .game1-link-title { font-weight: 700; }
 .game1-link .game1-link-copy { color: var(--text-dim); font-size: .9rem; }
-@media (max-width: 640px) { .practice-overview ul { columns: 1; } .mock-controls, .local-launch { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 640px) { .practice-overview ul { columns: 1; } .guide-heading, .mock-controls, .local-launch { align-items: flex-start; flex-direction: column; } .homework-grid { grid-template-columns: 1fr; } }
