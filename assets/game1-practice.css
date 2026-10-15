@@ -14,6 +14,10 @@
 .homework-grid details > div { padding: 0 .9rem .65rem; color: var(--text-dim); line-height: 1.5; }
 .homework-grid p { margin: .55rem 0; }
 .exam-extras { margin-top: 1rem; padding: .85rem; border: 1px solid var(--border); border-radius: 8px; line-height: 1.55; }
+.full-homework-key { margin-top: 1rem; border: 1px solid var(--accent); border-radius: 8px; background: var(--bg-raised); }
+.full-homework-key summary { cursor: pointer; padding: .85rem; font-weight: 700; }
+.answer-key-list { padding: 0 .9rem .9rem; line-height: 1.55; }
+.answer-key-list p { margin: .7rem 0; }
 .practice-overview, .practice-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); padding: 1.15rem; margin: 1rem 0; }
 .practice-overview { border-left: 4px solid var(--unit1); }
 .practice-overview h2, .practice-card h2 { margin-top: 0; }
