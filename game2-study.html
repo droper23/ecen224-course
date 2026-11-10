@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Game 2 Study Plan | ECEn 224</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/game1-practice.css">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<div class="topbar"><a class="back" href="index.html">&larr; course map</a><div class="topbar-spacer"></div><span class="topbar-progress">Game 2 preparation</span></div>
+<header class="practice-header">
+  <div class="kicker"><span class="badge unit4">Game 2</span> <span class="badge unit3">Assembly foundations</span></div>
+  <h1>Game 2 study plan</h1>
+  <p class="subtitle">Learn to trace x86-64 assembly from registers and memory through branches, loops, calls, stack frames, and buffer overflows. Work the examples on paper before opening the answers.</p>
+</header>
+<main class="practice-layout">
+<section class="practice-card">
+<h2>Start here</h2>
+<p>Learning Suite lists Game 2 in the Testing Center from November 9 at 8:00 a.m. through November 13 at 9:00 p.m. Mountain Time. Check <a href="https://learningsuite.byu.edu/">Learning Suite</a> for changes and the instructor's definitive scope.</p>
+<p><strong>Scope note:</strong> This plan is based on the course's assembly lessons, the schedule, selected current slides, and the reviewed HW11 attempt. Not every current slide or practice attempt was accessible during review. Optimization was scheduled after the Game 2 preparation session; confirm whether it is included rather than assuming either way. This companion is unofficial.</p>
+<p>For each session: study the linked lessons, answer their checks without looking, trace at least two examples on paper, and explain your reasoning aloud. Rework misses the following day. Allow roughly 90 minutes to two hours per session. Short on time? Start with sessions 1, 2, and 4, then use the mixed practice.</p>
+</section>
+<section class="homework-guide">
+<h2>Six-session plan</h2>
+<div class="homework-grid">
+<details open><summary><span>01</span> Registers, moves, and addresses</summary><div><p><a href="modules/14-assembly-introduction/lesson.html">Assembly introduction</a> &middot; <a href="modules/15-assembly-move-and-address/lesson.html">Move and address</a></p><p>Trace register widths, immediate values, loads, stores, effective addresses, and sign and zero extension. For each memory operand write the address first, then the value stored there.</p><p><strong>Checkpoint:</strong> explain the difference between <code>$0x1000</code>, <code>%rax</code>, <code>(%rax)</code>, and <code>leaq 8(%rax),%rbx</code>.</p></div></details>
+<details><summary><span>02</span> Arithmetic, flags, and branches</summary><div><p><a href="modules/16-assembly-arith-jump-cond/lesson.html">Arithmetic and conditionals</a></p><p>Trace arithmetic, shifts, <code>cmp</code>, <code>test</code>, conditional jumps, and conditional moves. Translate each taken and fall-through path to a C condition.</p><p><strong>Checkpoint:</strong> distinguish signed <code>jl</code> from unsigned <code>jb</code> after the same comparison.</p></div></details>
+<details><summary><span>03</span> Loops, switches, and structures</summary><div><p><a href="modules/17-assembly-loops-switches/lesson.html">Loops and switches</a> &middot; <a href="modules/18-assembly-structs-unions/lesson.html">Structs and unions</a></p><p>Identify loop initialization, test, body, update, and back edge. Decode jump tables and fall-through. Calculate member offsets, padding, and array strides.</p><p><strong>Checkpoint:</strong> reconstruct a loop and calculate a struct's offsets and total size without notes.</p></div></details>
+<details><summary><span>04</span> Calls, stack frames, and recursion</summary><div><p><a href="modules/19-assembly-control-and-data-flow/lesson.html">Control and data flow</a> &middot; <a href="modules/20-assembly-memory/lesson.html">Memory management</a></p><p>Draw the stack through calls, returns, pushes, and pops. Trace arguments and return values; distinguish caller-saved from callee-saved registers.</p><p><strong>Checkpoint:</strong> explain why each recursive call retains its own saved state.</p></div></details>
+<details><summary><span>05</span> Buffer overflow and integration</summary><div><p><a href="modules/21-assembly-buffer-overflow/lesson.html">Buffer overflow</a></p><p>Count writes including the null terminator, map a given stack layout, and explain canaries, ASLR, non-executable memory, and their limits.</p><p><strong>Checkpoint:</strong> locate the first overwritten byte for a provided frame layout.</p></div></details>
+<details><summary><span>06</span> Timed mixed practice</summary><div><p>Redo HW11&ndash;17 and relevant drills in Learning Suite, then solve the questions below without notes. Keep an error log: operand type, width, arithmetic, branch direction, offset, or stack update.</p><p><strong>Checkpoint:</strong> complete two mixed sets and explain each answer and each correction without relying on recognition.</p></div></details>
+</div></section>
+<section class="practice-card"><h2>Assembly essentials</h2>
+<h3>Operands and widths</h3>
+<p>AT&amp;T syntax uses source, destination. <code>movq %rax,%rbx</code> copies a register; <code>movq (%rax),%rbx</code> loads memory; <code>movq %rbx,(%rax)</code> stores to memory. <code>leaq 8(%rax),%rbx</code> computes an address without reading memory.</p>
+<p><code>D(base,index,scale)</code> computes <code>D + base + index &times; scale</code>; real x86-64 scales are 1, 2, 4, or 8. A memory operand then accesses that address. A <code>leaq</code> stops at the calculation. HW11 used 7 as a scale in some arithmetic exercises; that is not an encodable x86-64 scale.</p>
+<p>Suffixes <code>b</code>, <code>w</code>, <code>l</code>, and <code>q</code> mean 1, 2, 4, and 8 bytes. Writing <code>%eax</code> clears the upper half of <code>%rax</code>; writing <code>%ax</code> or <code>%al</code> leaves the other bits unchanged. Sign extension replicates the sign bit; zero extension adds zeros.</p>
+<h3>Comparisons and control flow</h3>
+<p><code>subq %rsi,%rdi</code> changes <code>%rdi</code> to <code>%rdi - %rsi</code>. <code>cmpq %rsi,%rdi</code> sets flags as if computing that subtraction but does not store it. <code>testq %rax,%rax</code> commonly checks for zero. The most recent instruction that changes the relevant flags controls the jump; <code>lea</code> does not change flags.</p>
+<p>After that comparison, <code>jl/jle/jg/jge</code> are signed less/less-or-equal/greater/greater-or-equal; <code>jb/jbe/ja/jae</code> are unsigned below/below-or-equal/above/above-or-equal. <code>je</code> and <code>jne</code> test equality. Label both the taken and fall-through paths.</p>
+<p>For loops, find initialization, entry test, body, update, and backward jump. A do-while executes its body before its first test. A jump table maps indices to code addresses; inspect the range check, repeated targets, and fall-through paths.</p>
+<h3>Structures and unions</h3>
+<p>Keep fields in declaration order, align each field according to the specified ABI, and round the final size to the largest member alignment. For <code>struct T { short s; double d; char c; }</code> under the usual x86-64 rules, offsets are 0, 8, and 16; the total is 24 bytes. Thus <code>&amp;a[i].c</code> is <code>base + 24*i + 16</code>. Union members overlap at the same starting address; its size accommodates its largest member and alignment.</p>
+<h3>Calls and stack</h3>
+<p>For System V x86-64, the first six integer/pointer arguments use <code>%rdi, %rsi, %rdx, %rcx, %r8, %r9</code>; the usual return register is <code>%rax</code>. <code>pushq</code> decreases <code>%rsp</code> by 8, <code>call</code> pushes the next instruction's address, and <code>ret</code> pops it. Draw the stack and update <code>%rsp</code> after every instruction that changes it.</p>
+<p><code>%rbx</code>, <code>%rbp</code>, and <code>%r12</code>&ndash;<code>%r15</code> are callee-saved, and the stack pointer must be restored. A callee that changes a callee-saved register must restore its caller's original value. Argument registers, <code>%rax</code>, <code>%r10</code>, and <code>%r11</code> are caller-saved. Each recursive call has its own frame.</p>
+<h3>Overflow and defenses</h3>
+<p>A write outside an object can corrupt nearby data or control information. Count the terminating <code>\0</code>: a 24-byte array holds at most 23 input characters plus the terminator. The actual frame layout determines what gets overwritten.</p>
+<p>Correct bounds checks and bounded input prevent the write. A canary can detect some overwrites before return; ASLR makes addresses less predictable; non-executable stack pages obstruct execution of injected stack bytes. These mitigations do not make an unbounded write safe.</p>
+</section>
+<section class="practice-card"><h2>Mixed practice</h2><p>Work each problem before opening its answer. Assume 64-bit registers and the stated System V conventions.</p>
+<div class="full-homework-key"><div class="answer-key-list"><h3>1. Effective address and memory</h3><p><strong>Problem:</strong> <code>%rax = 0x1000</code> and <code>%rdx = 3</code>. What address does <code>8(%rax,%rdx,4)</code> calculate? What is the difference between using it with <code>leaq</code> and as a <code>movq</code> source?</p><details><summary>Show answer</summary><p><strong>Answer:</strong> <code>0x1000 + 3*4 + 8 = 0x1014</code>. <code>lea</code> returns that address; <code>movq</code> reads eight bytes beginning there.</p></details></div></div>
+<div class="full-homework-key"><div class="answer-key-list"><h3>2. Partial register writes</h3><p><strong>Problem:</strong> Starting with <code>%rax = 0x1122334455667788</code>, find the result of <code>movl $1,%eax</code>. Separately, find the result of <code>movb $1,%al</code>.</p><details><summary>Show answer</summary><p><strong>Answer:</strong> The 32-bit write gives <code>0x0000000000000001</code>; the byte write gives <code>0x1122334455667701</code>.</p></details></div></div>
+<div class="full-homework-key"><div class="answer-key-list"><h3>3. Signed and unsigned branches</h3><p><strong>Problem:</strong> After <code>cmpq %rsi,%rdi</code>, when are <code>jl target</code> and <code>jb target</code> taken?</p><details><summary>Show answer</summary><p><strong>Answer:</strong> <code>jl</code> tests signed <code>%rdi &lt; %rsi</code>; <code>jb</code> tests unsigned <code>%rdi &lt; %rsi</code>. The same bits can produce different answers.</p></details></div></div>
+<div class="full-homework-key"><div class="answer-key-list"><h3>4. Trace a loop</h3><p><strong>Problem:</strong> What does this return for <code>%rdi = 3</code>? Does the body run if it starts at zero?</p><pre><code>movq $0, %rax
+.L: addq %rdi, %rax
+    subq $1, %rdi
+    jne .L
+    ret</code></pre><details><summary>Show answer</summary><p><strong>Answer:</strong> It adds 3, 2, and 1, returning 6. The body runs before the test, even for zero; then the machine value wraps and the loop does not immediately terminate.</p></details></div></div>
+<div class="full-homework-key"><div class="answer-key-list"><h3>5. Struct layout</h3><p><strong>Problem:</strong> Under the usual course x86-64 assumptions, find the offsets and size of <code>struct S { char c; int x; short y; };</code>.</p><details><summary>Show answer</summary><p><strong>Answer:</strong> <code>c</code> is at 0, <code>x</code> at 4, <code>y</code> at 8, and total size is 12 bytes. The total includes trailing padding to a multiple of 4.</p></details></div></div>
+<div class="full-homework-key"><div class="answer-key-list"><h3>6. Trace a call</h3><p><strong>Problem:</strong> Before a call, <code>%rsp = 0x1000</code>; the next instruction is at <code>0x401005</code> and the callee begins at <code>0x402000</code>. What changes immediately after the call?</p><details><summary>Show answer</summary><p><strong>Answer:</strong> <code>%rsp = 0x0ff8</code>, the new stack top contains <code>0x401005</code>, and <code>%rip = 0x402000</code>.</p></details></div></div>
+<div class="full-homework-key"><div class="answer-key-list"><h3>7. Buffer boundary</h3><p><strong>Problem:</strong> A 24-byte buffer begins at the current <code>%rsp</code>, with its saved return address immediately above it. How many input characters plus a null terminator first reach the return-address slot?</p><details><summary>Show answer</summary><p><strong>Answer:</strong> 24 characters fill offsets 0&ndash;23; the terminator reaches offset 24. Other compiled layouts may include padding, saved registers, or a canary, so calculate from the layout given.</p></details></div></div>
+</section>
+</main></body></html>
