@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Game 2 Practice Test | ECEn 224</title>
+<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/game1-practice.css">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/game2-bank.css">
+<style>
+.pt-ctl{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem .9rem;margin:.6rem 0 .2rem;padding:.6rem .8rem;background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius)}
+.pt-ctl label{color:var(--text-dim);font-size:.9rem;white-space:nowrap}
+.pt-ctl input[type=range]{flex:1;min-width:140px;accent-color:var(--accent);cursor:pointer}
+.pt-ctl .v{font-variant-numeric:tabular-nums;font-weight:700;color:var(--accent);min-width:5.5rem;text-align:right;font-size:.9rem}
+.pt-ctl .presets{display:flex;gap:.3rem}
+.pt-ctl .presets button{background:var(--bg-card);color:var(--text-dim);border:1px solid var(--border);border-radius:6px;padding:.15rem .5rem;font:inherit;font-size:.8rem;cursor:pointer}
+.pt-ctl .presets button:hover{border-color:var(--accent);color:var(--text)}
+.pt-global{border-color:var(--accent-dim)}
+.pt-empty{color:var(--text-faint);font-style:italic;margin:.6rem 0}
+.prio{color:var(--warn)}
+</style>
+</head>
+<body>
+<div class="topbar"><a class="back" href="index.html">&larr; course map</a><div class="topbar-spacer"></div><div class="qb-tools"><button id="toggle" aria-pressed="true">Hide answers</button><button id="revealAll">Reveal all</button><span class="count" id="count"></span></div></div>
+<header class="practice-header">
+  <div class="kicker"><span class="badge unit4">Game 2</span> <span class="badge unit3">Practice test</span></div>
+  <h1>Game 2 practice test</h1>
+  <p class="subtitle">The most important questions from the <a href="game2-questions.html">question bank</a>, without optimization. Within each section, questions are ranked by how likely they are to appear: how heavily the homework tested the skill, your past misses, and coverage of different skills. A section's slider shows its top N questions, kept in their original order so each shared setup block stays intact.</p>
+  <div class="warnbox"><strong>For the quizzer:</strong> Answers are shown and marked <span style="color:var(--good);font-weight:700">&#10003; CORRECT</span>, with an explanation under each. <em>Hide answers</em> switches to self-quiz mode. The small <span class="prio">priority</span> tag on each question gives its rank within its section (1 = most likely).</div>
+  <div class="pt-ctl pt-global">
+    <label for="all">Every section:</label>
+    <input type="range" id="all" min="0" max="29" value="5">
+    <span class="v" id="allv">5 each</span>
+    <span class="presets"><button data-all="3">3</button><button data-all="5">5</button><button data-all="10">10</button><button data-all="99">All</button></span>
+  </div>
+  <ul class="qb-toc" id="toc"></ul>
+</header>
+<main class="practice-layout">
+  <div id="bank" class="show"></div>
+</main>
+<script src="assets/game2-bank.js"></script>
+<script>
+/* Importance ranking within each section, using each question's 1-based position in that
+   section of BANK. Rank 1 is shown first. Questions that refer to an earlier question
+   ("same union", "the code above") always rank below the question they depend on. */
+const RANK = {
+  s1:  [1,2,3,5,9,4,6,7,8,10,13,11,12],
+  s2:  [7,6,11,10,1,12,9,13,5,4,18,2,3,8,14,19,22,21,15,23,16,17,20,24,26,25],
+  s3:  [4,5,10,9,3,6,1,2,7,8,11,13,12],
+  s4:  [2,7,5,8,13,1,4,9,10,3,6,11,14,15,18,16,20,21,17,22,19,12],
+  s5:  [12,5,16,18,14,17,13,6,19,3,7,9,10,4,15,1,2,8,11,20,21],
+  s6:  [12,14,9,3,5,1,6,8,13,11,2,7,16,18,15,10,4,17,19,21,22,20,23],
+  s7:  [1,5,6,3,4,8,7,9,2,10,11,12],
+  s8:  [1,6,13,19,4,12,14,11,17,16,18,15,2,3,5,7,20,23,8,9,24,10,21,22,25,26],
+  s9:  [18,24,12,3,9,22,21,15,5,6,13,11,10,25,26,19,16,17,20,23,1,2,4,7,8,14,27,28,29],
+  s10: [2,10,1,13,5,11,14,7,3,4,9,8,12,15,20,21,19,16,6,23,22,17,18],
+  s11: [1,7,9,11,6,2,5,4,8,10,12,13,14,17,3,15,16,19,18],
+};
+const EXCLUDE = new Set(['s12']);   // optimization
+const DEFAULT_N = 5;
+
+/* Group BANK into sections. Each block header says how many of the following
+   questions (n) belong to it; later questions are standalone. */
+const sections = [];
+{
+  let cur = null, block = null, left = 0, k = 0;
+  for (const it of BANK) {
+    if (it.sec) { cur = EXCLUDE.has(it.sec) ? null : { ...it, items: [], blocks: [] }; if (cur) sections.push(cur); block = null; left = 0; k = 0; continue; }
+    if (!cur) continue;
+    if (it.block) { cur.blocks.push(it); block = cur.blocks.length - 1; left = it.n; continue; }
+    cur.items.push({ q: it, k: ++k, block: left > 0 ? block : null });
+    if (left > 0 && --left === 0) block = null;
+  }
+}
+
+let counts = {};
+try { counts = JSON.parse(localStorage.getItem('g2pt-counts') || '{}'); } catch (e) {}
+for (const s of sections) if (counts[s.sec] === undefined) counts[s.sec] = Math.min(DEFAULT_N, s.items.length);
+const save = () => { try { localStorage.setItem('g2pt-counts', JSON.stringify(counts)); } catch (e) {} };
+
+const bank = document.getElementById('bank');
+const toc = document.getElementById('toc');
+
+/* Static section shells with sliders; question lists render into .pt-list */
+bank.innerHTML = sections.map(s => `
+  <section class="qb-sec" id="${s.sec}">
+    <h2>${s.title}</h2>
+    <div class="src">Source: ${s.src}</div>
+    <div class="pt-ctl">
+      <label for="r-${s.sec}">Questions:</label>
+      <input type="range" id="r-${s.sec}" data-sec="${s.sec}" min="0" max="${s.items.length}" value="${counts[s.sec]}">
+      <span class="v" id="v-${s.sec}"></span>
+      <span class="presets"><button data-sec="${s.sec}" data-n="0">0</button><button data-sec="${s.sec}" data-n="5">5</button><button data-sec="${s.sec}" data-n="${s.items.length}">All</button></span>
+    </div>
+  </section>
+  <div class="pt-list" id="l-${s.sec}"></div>`).join('');
+toc.innerHTML = sections.map(s => `<li><a href="#${s.sec}">${s.title} <span id="t-${s.sec}" style="color:var(--text-faint)"></span></a></li>`).join('');
+
+function render() {
+  let n = 0, total = 0;
+  for (const s of sections) {
+    const want = Math.min(counts[s.sec], s.items.length);
+    const chosen = new Set(RANK[s.sec].slice(0, want));
+    const prio = Object.fromEntries(RANK[s.sec].map((k, i) => [k, i + 1]));
+    let html = '', lastBlock = null;
+    for (const item of s.items) {
+      if (!chosen.has(item.k)) continue;
+      if (item.block !== null && item.block !== lastBlock) html += G2.block(s.blocks[item.block]);
+      lastBlock = item.block;
+      html += G2.card(item.q, ++n, `<span class="prio">priority ${prio[item.k]}</span>`);
+    }
+    document.getElementById('l-' + s.sec).innerHTML = html || '<p class="pt-empty">No questions selected for this section.</p>';
+    document.getElementById('v-' + s.sec).textContent = `${want} of ${s.items.length}`;
+    document.getElementById('r-' + s.sec).value = want;
+    document.getElementById('t-' + s.sec).textContent = `(${want})`;
+    total += want;
+  }
+  document.getElementById('count').textContent = total + ' questions';
+}
+
+bank.addEventListener('input', e => {
+  const r = e.target.closest('input[type=range][data-sec]');
+  if (!r) return;
+  counts[r.dataset.sec] = +r.value; save(); render();
+});
+bank.addEventListener('click', e => {
+  const p = e.target.closest('button[data-n]');
+  if (p) { counts[p.dataset.sec] = +p.dataset.n; save(); render(); return; }
+  const b = e.target.closest('.qb-reveal');
+  if (b) b.closest('.qb-q').classList.add('show');
+});
+
+/* Global slider */
+const all = document.getElementById('all'), allv = document.getElementById('allv');
+all.max = Math.max(...sections.map(s => s.items.length));
+function setAll(v) {
+  v = Math.min(+v, +all.max);
+  all.value = v; allv.textContent = v >= +all.max ? 'all' : v + ' each';
+  for (const s of sections) counts[s.sec] = Math.min(v, s.items.length);
+  save(); render();
+}
+all.addEventListener('input', () => setAll(all.value));
+document.querySelectorAll('[data-all]').forEach(b => b.addEventListener('click', () => setAll(b.dataset.all)));
+{
+  const vals = sections.map(s => counts[s.sec]);
+  const same = vals.every(v => v === vals[0]);
+  all.value = same ? vals[0] : DEFAULT_N;
+  allv.textContent = same ? vals[0] + ' each' : 'mixed';
+}
+
+/* Answers toggle */
+const toggle = document.getElementById('toggle');
+function setShown(on) {
+  bank.classList.toggle('show', on);
+  toggle.textContent = on ? 'Hide answers' : 'Show answers';
+  toggle.setAttribute('aria-pressed', on);
+  if (on) document.querySelectorAll('.qb-q.show').forEach(q => q.classList.remove('show'));
+  try { localStorage.setItem('g2pt-shown', on ? '1' : '0'); } catch (e) {}
+}
+let saved = null;
+try { saved = localStorage.getItem('g2pt-shown'); } catch (e) {}
+setShown(saved !== '0');
+toggle.addEventListener('click', () => setShown(!bank.classList.contains('show')));
+document.getElementById('revealAll').addEventListener('click', () => setShown(true));
+
+render();
+</script>
+</body>
+</html>
