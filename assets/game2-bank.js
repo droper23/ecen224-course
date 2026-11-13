@@ -713,10 +713,28 @@ echo:
 ];
 
 /* ---------------- shared rendering ---------------- */
+/* Tag block membership from each block's n: blocks get _id, member questions get _blk. */
+(() => {
+  let blk = null, left = 0, id = 0;
+  for (const it of BANK) {
+    if (it.sec) { blk = null; left = 0; continue; }
+    if (it.block) { it._id = 'b' + (++id); blk = it._id; left = it.n || 0; continue; }
+    it._blk = left > 0 ? blk : null;
+    if (left > 0 && --left === 0) blk = null;
+  }
+})();
+
 const G2 = (() => {
   const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const L = 'ABCDEFGH';
-  const block = it => `<div class="qb-block"><div class="bt">Beginning of block: ${it.block}</div>${it.html || ''}${it.code ? '<pre><code>' + esc(it.code) + '</code></pre>' : ''}</div>`;
+  const FS = '<button class="qb-fs" type="button" title="Show the code full screen with the question(s), answers hidden">&#x26F6; Full screen</button>';
+
+  function block(it) {
+    const fs = (it.code || /<table/.test(it.html || '')) ? FS : '';
+    return `<div class="qb-block" data-blk-id="${it._id}"><div class="bt"><span>Beginning of block: ${it.block}</span>${fs}</div>`
+      + `<div class="qb-intro">${it.html || ''}</div>${it.code ? '<pre><code>' + esc(it.code) + '</code></pre>' : ''}</div>`;
+  }
+
   function card(it, n, extra) {
     let fmt, opts = '', key;
     if (it.tf !== undefined) {
@@ -732,11 +750,102 @@ const G2 = (() => {
       opts = it.opts.map((o,i) => `<li class="${(multi ? it.a.includes(i) : it.a===i)?'ok':''}"><span class="L">${L[i]}.</span><span>${o}</span></li>`).join('');
       key = 'Answer: ' + (multi ? it.a.map(i => L[i]).join(', ') : `${L[it.a]}. ${it.opts[it.a]}`);
     }
-    return `<div class="qb-q"><div class="qh"><span class="qn">${n}.</span><div class="qt">${it.q}</div><span class="fmt">${extra ? extra + ' &middot; ' : ''}${fmt}</span></div>`
-      + (it.code ? '<pre><code>' + esc(it.code) + '</code></pre>' : '')
+    return `<div class="qb-q"${it._blk ? ` data-blk="${it._blk}"` : ''}><div class="qh"><span class="qn">${n}.</span><div class="qt">${it.q}</div><span class="fmt">${extra ? extra + ' &middot; ' : ''}${fmt}</span></div>`
+      + (it.code ? `<div class="qb-codewrap">${FS}<pre><code>${esc(it.code)}</code></pre></div>` : '')
       + (opts ? `<ul class="qb-opts">${opts}</ul>` : '')
       + `<button class="qb-reveal" type="button">Reveal answer</button>`
       + `<div class="qb-ans"><div class="key">${key}</div><div class="exp">${it.exp}</div></div></div>`;
   }
-  return { esc, block, card };
+
+  /* ---- syntax highlighting for mixed C / AT&T x86-64 listings ---- */
+  const KW = new Set(('long int char short double float unsigned signed struct union typedef void return if else while do for switch case break default size_t volatile const goto').split(' '));
+  const MNEM = /^(mov|lea|add|sub|imul|mul|idiv|div|sal|sar|shl|shr|xor|and|or|inc|dec|neg|not|cmp|test|set|j[a-z]{1,3}|call|ret|push|pop|rep|cmov|cltq|cqto|nop)[a-z]*$/;
+  const TOK = /(\/\*[\s\S]*?\*\/|\/\/[^\n]*|#[^\n]*)|("(?:[^"\\\n]|\\.)*")|(%[a-z][a-z0-9]*)|(\$-?(?:0x[0-9a-fA-F]+|\d+|[A-Za-z_.][\w.]*))|([A-Za-z_.][\w.]*)(\s*:)?|(0x[0-9a-fA-F]+|\d+)(:)?|(;)|(\s+|.)/g;
+  function highlight(code) {
+    return code.split('\n').map(line => {
+      let out = '', first = true, m;
+      const lead = line.match(/^(\s*\d+)(?=\s)/);           // listing line numbers ("1 ", "10 ")
+      if (lead) { out += `<span class="hl-ln">${lead[1]}</span>`; line = line.slice(lead[1].length); }
+      TOK.lastIndex = 0;
+      while ((m = TOK.exec(line)) && m[0] !== '') {
+        const [t, com, str, reg, imm, id, colon, num, numColon, semi] = m;
+        if (com) out += `<span class="hl-com">${esc(com)}</span>`;
+        else if (str) out += `<span class="hl-str">${esc(str)}</span>`;
+        else if (reg) out += `<span class="hl-reg">${reg}</span>`;
+        else if (imm) out += `<span class="hl-imm">${esc(imm)}</span>`;
+        else if (id) {
+          let cls = '';
+          if (colon) cls = 'hl-lbl';
+          else if (KW.has(id)) cls = 'hl-kw';
+          else if (/^\.L/.test(id)) cls = 'hl-lbl';
+          else if (/^\./.test(id)) cls = 'hl-dir';
+          else if (first && MNEM.test(id)) cls = 'hl-op';
+          out += cls ? `<span class="${cls}">${esc(id)}${colon || ''}</span>` : esc(id) + (colon || '');
+          if (!colon) first = false;
+        }
+        else if (num) out += numColon ? `<span class="hl-ln">${num}:</span>` : `<span class="hl-num">${num}</span>`;
+        else if (semi) { out += ';'; first = true; }
+        else out += esc(t);
+      }
+      return out;
+    }).join('\n');
+  }
+
+  /* ---- full-screen presenter ---- */
+  let overlay = null;
+  function clean(card, dropCode) {
+    const c = card.cloneNode(true);
+    c.querySelectorAll('.qb-ans, .qb-reveal, .fmt, .qb-fs').forEach(e => e.remove());
+    c.querySelectorAll('.ok').forEach(e => e.classList.remove('ok'));
+    c.classList.remove('show');
+    const wrap = c.querySelector('.qb-codewrap');
+    if (wrap) {
+      if (dropCode) wrap.remove();
+      else wrap.replaceWith(Object.assign(document.createElement('pre'), { innerHTML: '<code>' + highlight(wrap.querySelector('code').textContent) + '</code>' }));
+    }
+    return c.outerHTML;
+  }
+  function open(btn) {
+    const blockEl = btn.closest('.qb-block'), cardEl = btn.closest('.qb-q');
+    let title, intro = '', code = '', qs = '';
+    if (blockEl) {
+      title = blockEl.querySelector('.bt span').textContent.replace('Beginning of block: ', '');
+      intro = blockEl.querySelector('.qb-intro').innerHTML;
+      code = blockEl.querySelector(':scope > pre code')?.textContent || '';
+      const members = [...document.querySelectorAll(`.qb-q[data-blk="${blockEl.dataset.blkId}"]`)];
+      qs = members.map(c => clean(c, false)).join('') || '<p class="pt-empty">No questions from this block are currently shown.</p>';
+    } else {
+      title = 'Question ' + cardEl.querySelector('.qn').textContent.replace('.', '');
+      code = cardEl.querySelector('.qb-codewrap code').textContent;
+      qs = clean(cardEl, true);
+    }
+    close();
+    overlay = document.createElement('div');
+    overlay.className = 'qb-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-label', 'Full-screen question: ' + title);
+    overlay.innerHTML = `<div class="ov-bar"><span class="ov-title">${esc(title)}</span><button class="ov-exit" type="button">Exit full screen &#x2715;</button></div>`
+      + `<div class="ov-body">${intro ? `<div class="ov-intro">${intro}</div>` : ''}`
+      + (code ? `<pre class="ov-code"><code>${highlight(code)}</code></pre>` : '')
+      + `<div class="ov-qs">${qs}</div></div>`;
+    document.body.appendChild(overlay);
+    document.documentElement.classList.add('ov-open');
+    overlay.querySelector('.ov-exit').focus();
+    try { const p = overlay.requestFullscreen?.(); if (p) p.catch(() => {}); } catch (e) {}
+  }
+  function close() {
+    if (!overlay) return;
+    overlay.remove(); overlay = null;
+    document.documentElement.classList.remove('ov-open');
+    try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) {}
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('.qb-fs');
+    if (b) { open(b); return; }
+    if (e.target.closest('.ov-exit')) close();
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && overlay) close(); });
+
+  return { esc, block, card, highlight };
 })();
