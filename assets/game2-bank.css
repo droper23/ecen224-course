@@ -44,9 +44,10 @@
 .qb-block .bt{display:flex;align-items:center;gap:.6rem}
 .qb-block .bt span{flex:1}
 .qb-codewrap{position:relative}
-.qb-codewrap .qb-fs{position:absolute;top:.4rem;right:.4rem;z-index:1}
-.qb-fs{background:var(--bg-card);color:var(--accent);border:1px solid var(--accent-dim);border-radius:6px;padding:.2rem .6rem;font:inherit;font-size:.8rem;letter-spacing:0;text-transform:none;cursor:pointer;white-space:nowrap}
-.qb-fs:hover{border-color:var(--accent);background:var(--bg-raised)}
+.qb-codewrap .qb-fs{position:absolute;top:.45rem;right:.45rem;z-index:1}
+.qb-fs{background:var(--accent);color:#08111c;border:0;border-radius:7px;padding:.35rem .8rem;font:inherit;font-size:.85rem;font-weight:700;letter-spacing:0;text-transform:none;cursor:pointer;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.qb-fs:hover{filter:brightness(1.12)}
+.qb-q .qh .qb-fs{align-self:center}
 /* ---- full-screen presenter ---- */
 html.ov-open,html.ov-open body{overflow:hidden}
 .qb-overlay{position:fixed;inset:0;z-index:1000;background:var(--bg);color:var(--text);overflow:auto;display:flex;flex-direction:column}

@@ -718,8 +718,9 @@ echo:
   let blk = null, left = 0, id = 0;
   for (const it of BANK) {
     if (it.sec) { blk = null; left = 0; continue; }
-    if (it.block) { it._id = 'b' + (++id); blk = it._id; left = it.n || 0; continue; }
-    it._blk = left > 0 ? blk : null;
+    if (it.block) { it._id = 'b' + (++id); it._fs = !!(it.code || /<table/.test(it.html || '')); blk = it; left = it.n || 0; continue; }
+    it._blk = left > 0 ? blk._id : null;
+    it._blkFs = left > 0 && blk._fs;
     if (left > 0 && --left === 0) blk = null;
   }
 })();
@@ -728,11 +729,12 @@ const G2 = (() => {
   const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const L = 'ABCDEFGH';
   const FS = '<button class="qb-fs" type="button" title="Show the code full screen with the question(s), answers hidden">&#x26F6; Full screen</button>';
+  const FSB = id => `<button class="qb-fs" type="button" data-blk-target="${id}" title="Show this question's code full screen, answers hidden">&#x26F6; Full screen</button>`;
 
   function block(it) {
-    const fs = (it.code || /<table/.test(it.html || '')) ? FS : '';
-    return `<div class="qb-block" data-blk-id="${it._id}"><div class="bt"><span>Beginning of block: ${it.block}</span>${fs}</div>`
-      + `<div class="qb-intro">${it.html || ''}</div>${it.code ? '<pre><code>' + esc(it.code) + '</code></pre>' : ''}</div>`;
+    const headFs = (!it.code && it._fs) ? FS : '';
+    return `<div class="qb-block" data-blk-id="${it._id}"><div class="bt"><span>Beginning of block: ${it.block}</span>${headFs}</div>`
+      + `<div class="qb-intro">${it.html || ''}</div>${it.code ? `<div class="qb-codewrap">${FS}<pre><code>${esc(it.code)}</code></pre></div>` : ''}</div>`;
   }
 
   function card(it, n, extra) {
@@ -750,7 +752,7 @@ const G2 = (() => {
       opts = it.opts.map((o,i) => `<li class="${(multi ? it.a.includes(i) : it.a===i)?'ok':''}"><span class="L">${L[i]}.</span><span>${o}</span></li>`).join('');
       key = 'Answer: ' + (multi ? it.a.map(i => L[i]).join(', ') : `${L[it.a]}. ${it.opts[it.a]}`);
     }
-    return `<div class="qb-q"${it._blk ? ` data-blk="${it._blk}"` : ''}><div class="qh"><span class="qn">${n}.</span><div class="qt">${it.q}</div><span class="fmt">${extra ? extra + ' &middot; ' : ''}${fmt}</span></div>`
+    return `<div class="qb-q"${it._blk ? ` data-blk="${it._blk}"` : ''}><div class="qh"><span class="qn">${n}.</span><div class="qt">${it.q}</div><span class="fmt">${extra ? extra + ' &middot; ' : ''}${fmt}</span>${it._blkFs && !it.code ? FSB(it._blk) : ''}</div>`
       + (it.code ? `<div class="qb-codewrap">${FS}<pre><code>${esc(it.code)}</code></pre></div>` : '')
       + (opts ? `<ul class="qb-opts">${opts}</ul>` : '')
       + `<button class="qb-reveal" type="button">Reveal answer</button>`
@@ -806,12 +808,13 @@ const G2 = (() => {
     return c.outerHTML;
   }
   function open(btn) {
-    const blockEl = btn.closest('.qb-block'), cardEl = btn.closest('.qb-q');
+    const blockEl = btn.dataset.blkTarget ? document.querySelector(`.qb-block[data-blk-id="${btn.dataset.blkTarget}"]`) : btn.closest('.qb-block');
+    const cardEl = btn.closest('.qb-q');
     let title, intro = '', code = '', qs = '';
     if (blockEl) {
       title = blockEl.querySelector('.bt span').textContent.replace('Beginning of block: ', '');
       intro = blockEl.querySelector('.qb-intro').innerHTML;
-      code = blockEl.querySelector(':scope > pre code')?.textContent || '';
+      code = blockEl.querySelector('.qb-codewrap code')?.textContent || '';
       const members = [...document.querySelectorAll(`.qb-q[data-blk="${blockEl.dataset.blkId}"]`)];
       qs = members.map(c => clean(c, false)).join('') || '<p class="pt-empty">No questions from this block are currently shown.</p>';
     } else {
